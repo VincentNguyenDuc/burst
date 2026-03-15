@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/burst-core/Cargo.toml",
+        "${workspaceFolder}/burst-controller/Cargo.toml",
+        "${workspaceFolder}/burst-worker/Cargo.toml",
+        "${workspaceFolder}/burst-cli/Cargo.toml",
+        "${workspaceFolder}/Cargo.toml"
+    ]
+}

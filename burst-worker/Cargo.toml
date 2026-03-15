@@ -1,0 +1,10 @@
+[package]
+name = "burst-worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+burst-core = { path = "../burst-core" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

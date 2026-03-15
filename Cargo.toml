@@ -1,7 +1,17 @@
 [workspace]
 resolver = "3"
 members = [
-    "burstd",
-    "burstctld",
-    "burstcli",
+    "burst-core",
+    "burst-controller",
+    "burst-worker",
+    "burst-cli",
 ]
+
+[workspace.dependencies]
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "signal"] }
+tonic = "0.12"
+prost = "0.13"
+async-trait = "0.1"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
