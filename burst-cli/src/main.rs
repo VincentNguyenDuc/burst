@@ -1,3 +1,16 @@
+//! CLI client for burst.
+//!
+//! Commands in current POC:
+//!
+//! - `submit <command> [args...]`
+//! - `status --job-id <job-id>`
+//!
+//! Global option:
+//!
+//! - `--config <path>` (default `burst.config.json`)
+//! - `--controller <addr>` optional override
+
+use burst_core::config::BurstConfig;
 use burst_core::proto::{
     GetJobStatusRequest, JobSpec, SubmitJobRequest, controller_rpc_client::ControllerRpcClient,
 };
@@ -6,8 +19,11 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "burst-cli")]
 struct Cli {
-    #[arg(long, global = true, default_value = "http://127.0.0.1:50051")]
-    controller: String,
+    #[arg(long, global = true, default_value = "burst.config.json")]
+    config: String,
+
+    #[arg(long, global = true)]
+    controller: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -30,10 +46,23 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    let mut client = match ControllerRpcClient::connect(cli.controller.clone()).await {
+    let config = match BurstConfig::load_from_path(&cli.config) {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::error!(path = cli.config, error = %error, "failed to load config");
+            std::process::exit(2);
+        }
+    };
+
+    let controller_addr = cli
+        .controller
+        .clone()
+        .unwrap_or_else(|| config.cli.controller_addr.clone());
+
+    let mut client = match ControllerRpcClient::connect(controller_addr.clone()).await {
         Ok(client) => client,
         Err(error) => {
-            tracing::error!(error = %error, controller = cli.controller, "failed to connect");
+            tracing::error!(error = %error, controller = controller_addr, "failed to connect");
             std::process::exit(1);
         }
     };

@@ -1,0 +1,19 @@
+{
+  "controller": {
+    "bind_addr": "127.0.0.1:50051",
+    "scheduler": "fifo"
+  },
+  "worker": {
+    "controller_addr": "http://127.0.0.1:50051",
+    "default_slots": 1,
+    "poll_interval_ms": 250,
+    "retry_interval_ms": 500
+  },
+  "cli": {
+    "controller_addr": "http://127.0.0.1:50051"
+  },
+  "cluster": {
+    "num_workers": 4,
+    "worker_slots": 1
+  }
+}
