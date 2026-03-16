@@ -16,11 +16,11 @@
 
 use std::time::Duration;
 
+use burst_core::config::BurstConfig;
 use burst_core::proto::{
     PollJobRequest, RegisterWorkerRequest, ReportJobResultRequest,
     controller_rpc_client::ControllerRpcClient, poll_job_response,
 };
-use burst_core::config::BurstConfig;
 use tokio::time::sleep;
 
 fn read_option(args: &[String], name: &str) -> Option<String> {
@@ -54,7 +54,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let config_path = read_option(&args, "--config").unwrap_or_else(|| "burst.config.json".to_string());
+    let config_path =
+        read_option(&args, "--config").unwrap_or_else(|| "burst.config.json".to_string());
 
     let config = match BurstConfig::load_from_path(&config_path) {
         Ok(config) => config,

@@ -20,6 +20,7 @@ use std::{
     sync::Arc,
 };
 
+use burst_core::config::BurstConfig;
 use burst_core::proto::{
     AssignedJob, Empty, GetJobStatusRequest, GetJobStatusResponse, HeartbeatRequest,
     HeartbeatResponse, PollJobRequest, PollJobResponse, RegisterWorkerRequest,
@@ -28,7 +29,6 @@ use burst_core::proto::{
     controller_rpc_server::{ControllerRpc, ControllerRpcServer},
     poll_job_response,
 };
-use burst_core::config::BurstConfig;
 use domain::{Job, SchedulingContext, WorkerState};
 use scheduler::{FifoFactory, SchedulerRegistry};
 use tokio::sync::Mutex;
