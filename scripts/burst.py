@@ -31,8 +31,6 @@ def cmd_controller(args: argparse.Namespace) -> None:
 
 
 def cmd_submit(args: argparse.Namespace) -> None:
-    controller_addr = args.controller or controller_addr_from_config(args.config)
-
     argv: list[str]
     if args.argv:
         argv = list(args.argv)
@@ -52,9 +50,9 @@ def cmd_submit(args: argparse.Namespace) -> None:
             "--",
             "--config",
             args.config,
-            "--controller",
-            controller_addr,
             "submit",
+            "--output-dir",
+            "./.burst-dev",
             *argv,
         ],
         cwd=repo_root(),
@@ -62,7 +60,6 @@ def cmd_submit(args: argparse.Namespace) -> None:
 
 
 def cmd_status(args: argparse.Namespace) -> None:
-    controller_addr = args.controller or controller_addr_from_config(args.config)
     job_id = args.job_id or os.environ.get("JOB_ID")
     if not job_id:
         raise SystemExit("status requires --job-id (or JOB_ID env var)")
@@ -76,8 +73,6 @@ def cmd_status(args: argparse.Namespace) -> None:
             "--",
             "--config",
             args.config,
-            "--controller",
-            controller_addr,
             "status",
             "--job-id",
             job_id,

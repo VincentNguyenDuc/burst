@@ -8,7 +8,6 @@
 //! Global option:
 //!
 //! - `--config <path>` (default `burst.config.json`)
-//! - `--controller <addr>` optional override
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::{
@@ -22,9 +21,6 @@ struct Cli {
     #[arg(long, global = true, default_value = "burst.config.json")]
     config: String,
 
-    #[arg(long, global = true)]
-    controller: Option<String>,
-
     #[command(subcommand)]
     command: Commands,
 }
@@ -32,6 +28,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Submit {
+        #[arg(long)]
+        output_dir: Option<String>,
+
         #[arg(required = true, trailing_var_arg = true)]
         argv: Vec<String>,
     },
@@ -54,11 +53,7 @@ async fn main() {
         }
     };
 
-    let controller_addr = cli
-        .controller
-        .clone()
-        .unwrap_or_else(|| config.cli.controller_addr.clone());
-
+    let controller_addr = config.cli.controller_addr.clone();
     let mut client = match ControllerRpcClient::connect(controller_addr.clone()).await {
         Ok(client) => client,
         Err(error) => {
@@ -68,13 +63,17 @@ async fn main() {
     };
 
     match cli.command {
-        Commands::Submit { argv } => {
+        Commands::Submit { output_dir, argv } => {
             let command = argv[0].clone();
             let args = argv[1..].to_vec();
 
             match client
                 .submit_job(SubmitJobRequest {
-                    spec: Some(JobSpec { command, args }),
+                    spec: Some(JobSpec {
+                        command,
+                        args,
+                        output_dir,
+                    }),
                 })
                 .await
             {

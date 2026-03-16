@@ -12,8 +12,9 @@ service ControllerRpc {
 }
 
 message JobSpec {
-  string          command = 1;
-  repeated string args    = 2;
+  string          command    = 1;
+  repeated string args       = 2;
+  optional string output_dir = 3;
 }
 
 message SubmitJobRequest {

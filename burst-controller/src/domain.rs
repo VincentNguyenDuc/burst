@@ -8,6 +8,7 @@ pub struct Job {
     pub id: String,
     pub command: String,
     pub args: Vec<String>,
+    pub output_dir: Option<String>,
 }
 
 /// Worker runtime capacity tracked by controller.
