@@ -1,0 +1,13 @@
+[package]
+name = "burst-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+prost.workspace = true
+tonic.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+tonic-build = "0.12"
