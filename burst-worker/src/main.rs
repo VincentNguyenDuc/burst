@@ -11,8 +11,7 @@
 //! Configuration:
 //!
 //! - `--config <path>` (default `burst.config.json`)
-//! - `--worker-id <id>` optional override
-//! - `--slots <n>` optional override
+//! - `--worker-id <id>` must match a `worker_id` in the `workers` list
 
 use std::time::Duration;
 
@@ -21,15 +20,19 @@ use burst_core::proto::{
     PollJobRequest, RegisterWorkerRequest, ReportJobResultRequest,
     controller_rpc_client::ControllerRpcClient, poll_job_response,
 };
+use clap::Parser;
 use tokio::time::sleep;
 
-fn read_option(args: &[String], name: &str) -> Option<String> {
-    for pair in args.windows(2) {
-        if pair[0] == name {
-            return Some(pair[1].clone());
-        }
-    }
-    None
+#[derive(Parser)]
+#[command(about = "Burst worker service")]
+struct Args {
+    /// Path to the config file
+    #[arg(long, default_value = "burst.config.json")]
+    config: String,
+
+    /// Worker ID — must match a `worker_id` entry in the config `workers` list
+    #[arg(long)]
+    worker_id: String,
 }
 
 async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
@@ -53,27 +56,29 @@ async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let config_path =
-        read_option(&args, "--config").unwrap_or_else(|| "burst.config.json".to_string());
+    let args = Args::parse();
 
-    let config = match BurstConfig::load_from_path(&config_path) {
+    let config = match BurstConfig::load_from_path(&args.config) {
         Ok(config) => config,
         Err(error) => {
-            tracing::error!(path = config_path, error = %error, "failed to load config");
+            tracing::error!(path = args.config, error = %error, "failed to load config");
             std::process::exit(2);
         }
     };
 
-    let controller_addr = config.worker.controller_addr.clone();
-    let worker_id = read_option(&args, "--worker-id")
-        .unwrap_or_else(|| format!("worker-{}", std::process::id()));
-    let slots = read_option(&args, "--slots")
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(config.worker.default_slots)
-        .max(1);
-    let poll_interval = Duration::from_millis(config.worker.poll_interval_ms.max(10));
-    let retry_interval = Duration::from_millis(config.worker.retry_interval_ms.max(10));
+    let worker_id = args.worker_id;
+    let worker_config = match config.workers.iter().find(|w| w.worker_id == worker_id) {
+        Some(wc) => wc.clone(),
+        None => {
+            tracing::error!(worker_id, "no matching worker entry found in config");
+            std::process::exit(2);
+        }
+    };
+
+    let controller_addr = worker_config.controller_addr.clone();
+    let slots = worker_config.slots.max(1);
+    let poll_interval = Duration::from_millis(worker_config.poll_interval_ms.max(10));
+    let retry_interval = Duration::from_millis(worker_config.retry_interval_ms.max(10));
 
     tracing::info!(
         controller = controller_addr,

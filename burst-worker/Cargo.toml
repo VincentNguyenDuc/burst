@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 burst-core = { path = "../burst-core" }
+clap.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 tracing.workspace = true

@@ -212,6 +212,7 @@ name = "burst-worker"
 version = "0.1.0"
 dependencies = [
  "burst-core",
+ "clap",
  "tokio",
  "tonic",
  "tracing",

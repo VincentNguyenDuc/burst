@@ -6,18 +6,16 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct BurstConfig {
     pub controller: ControllerConfig,
-    pub worker: WorkerConfig,
+    pub workers: Vec<WorkerConfig>,
     pub cli: CliConfig,
-    pub cluster: ClusterConfig,
 }
 
 impl Default for BurstConfig {
     fn default() -> Self {
         Self {
             controller: ControllerConfig::default(),
-            worker: WorkerConfig::default(),
+            workers: vec![WorkerConfig::default()],
             cli: CliConfig::default(),
-            cluster: ClusterConfig::default(),
         }
     }
 }
@@ -50,10 +48,10 @@ impl Default for ControllerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
 pub struct WorkerConfig {
+    pub worker_id: String,
     pub controller_addr: String,
-    pub default_slots: u32,
+    pub slots: u32,
     pub poll_interval_ms: u64,
     pub retry_interval_ms: u64,
 }
@@ -61,8 +59,9 @@ pub struct WorkerConfig {
 impl Default for WorkerConfig {
     fn default() -> Self {
         Self {
+            worker_id: "worker-1".to_string(),
             controller_addr: "http://127.0.0.1:50051".to_string(),
-            default_slots: 1,
+            slots: 1,
             poll_interval_ms: 250,
             retry_interval_ms: 500,
         }
@@ -79,22 +78,6 @@ impl Default for CliConfig {
     fn default() -> Self {
         Self {
             controller_addr: "http://127.0.0.1:50051".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ClusterConfig {
-    pub num_workers: u32,
-    pub worker_slots: u32,
-}
-
-impl Default for ClusterConfig {
-    fn default() -> Self {
-        Self {
-            num_workers: 2,
-            worker_slots: 1,
         }
     }
 }
