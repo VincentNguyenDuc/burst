@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::controller_rpc_server::ControllerRpcServer;
-use scheduler::{FifoFactory, SchedulerRegistry};
+use scheduler::{FifoFactory, PowerOfTwoFactory, SchedulerRegistry};
 use tonic::transport::Server;
 
 fn read_config_path() -> String {
@@ -51,6 +51,7 @@ async fn main() {
 
     let mut registry = SchedulerRegistry::new();
     registry.register(FifoFactory);
+    registry.register(PowerOfTwoFactory);
 
     let strategy_name = config.controller.scheduler.clone();
     let available = registry.available();

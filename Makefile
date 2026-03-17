@@ -5,7 +5,7 @@ ARGV ?=
 JOB_ID ?=
 
 BURST_STATE_DIR ?= .burst-dev
-CONFIG_PATH ?= burst.config.json
+CONFIG_PATH ?= burst-example.config.json
 OUTPUT_DIR ?= ./.burst-dev/job-outputs
 
 OUTPUT_DIR_ARG = $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
