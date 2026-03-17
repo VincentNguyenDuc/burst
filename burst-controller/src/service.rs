@@ -200,3 +200,125 @@ impl ControllerRpc for ControllerService {
         Ok(Response::new(HeartbeatResponse { ok }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use burst_core::proto::{
+        GetJobStatusRequest, JobSpec, PollJobRequest, RegisterWorkerRequest,
+        ReportJobResultRequest, SubmitJobRequest, controller_rpc_server::ControllerRpc,
+        poll_job_response,
+    };
+    use tonic::Request;
+
+    use crate::scheduler::{FifoFactory, SchedulerFactory};
+
+    use super::ControllerService;
+
+    fn service() -> ControllerService {
+        ControllerService::new(FifoFactory.build())
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_empty_command() {
+        let service = service();
+
+        let error = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    command: "   ".to_string(),
+                    args: vec![],
+                    output_dir: None,
+                }),
+            }))
+            .await
+            .expect_err("empty command should be rejected");
+
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn submit_poll_report_updates_status() {
+        let service = service();
+
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        let job_id = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    command: "echo".to_string(),
+                    args: vec!["hello".to_string()],
+                    output_dir: None,
+                }),
+            }))
+            .await
+            .expect("submit should succeed")
+            .into_inner()
+            .job_id;
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        let assigned = match poll.result {
+            Some(poll_job_response::Result::Job(job)) => job,
+            _ => panic!("expected assigned job"),
+        };
+        assert_eq!(assigned.job_id, job_id);
+
+        service
+            .report_job_result(Request::new(ReportJobResultRequest {
+                worker_id: "worker-1".to_string(),
+                job_id: job_id.clone(),
+                exit_code: 0,
+                error_message: String::new(),
+            }))
+            .await
+            .expect("report should succeed");
+
+        let status = service
+            .get_job_status(Request::new(GetJobStatusRequest {
+                job_id: job_id.clone(),
+            }))
+            .await
+            .expect("status should succeed")
+            .into_inner();
+
+        assert_eq!(status.job_id, job_id);
+        assert_eq!(status.state, "succeeded");
+    }
+
+    #[tokio::test]
+    async fn poll_returns_empty_without_jobs() {
+        let service = service();
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        assert!(matches!(
+            poll.result,
+            Some(poll_job_response::Result::Empty(_))
+        ));
+    }
+}

@@ -241,3 +241,92 @@ async fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use burst_core::proto::{AssignedJob, JobSpec};
+
+    use super::execute_job;
+
+    fn temp_output_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("burst-worker-{name}-{nanos}"))
+    }
+
+    #[tokio::test]
+    async fn execute_job_fails_without_spec() {
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-1".to_string(),
+            spec: None,
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "missing job spec");
+    }
+
+    #[tokio::test]
+    async fn execute_job_captures_stdout_and_stderr() {
+        let output_dir = temp_output_dir("stdout-stderr");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-2".to_string(),
+            spec: Some(JobSpec {
+                command: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), "echo hello; echo oops 1>&2".to_string()],
+                output_dir: Some(output_dir_str),
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, 0);
+        assert_eq!(error_message, "");
+
+        let stdout = fs::read_to_string(output_dir.join("job-2.stdout"))
+            .expect("stdout file should be created");
+        let stderr = fs::read_to_string(output_dir.join("job-2.stderr"))
+            .expect("stderr file should be created");
+
+        assert!(stdout.contains("hello"));
+        assert!(stderr.contains("oops"));
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_returns_nonzero_exit_code() {
+        let output_dir = temp_output_dir("nonzero");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-3".to_string(),
+            spec: Some(JobSpec {
+                command: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), "exit 7".to_string()],
+                output_dir: Some(output_dir_str),
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error_message, "");
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+}

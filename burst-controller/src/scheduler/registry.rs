@@ -30,3 +30,43 @@ impl SchedulerRegistry {
         names
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SchedulerRegistry;
+    use crate::scheduler::{FifoFactory, SchedulerFactory};
+
+    struct AlphaFactory;
+
+    impl SchedulerFactory for AlphaFactory {
+        fn name(&self) -> &'static str {
+            "alpha"
+        }
+
+        fn build(&self) -> Box<dyn crate::scheduler::SchedulerStrategy> {
+            FifoFactory.build()
+        }
+    }
+
+    #[test]
+    fn build_returns_registered_strategy() {
+        let mut registry = SchedulerRegistry::new();
+        registry.register(FifoFactory);
+
+        let strategy = registry.build("fifo");
+
+        assert!(strategy.is_some());
+        assert_eq!(strategy.expect("strategy missing").name(), "fifo");
+    }
+
+    #[test]
+    fn available_is_sorted() {
+        let mut registry = SchedulerRegistry::new();
+        registry.register(FifoFactory);
+        registry.register(AlphaFactory);
+
+        let names = registry.available();
+
+        assert_eq!(names, vec!["alpha".to_string(), "fifo".to_string()]);
+    }
+}

@@ -100,3 +100,45 @@ async fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::{Cli, Commands};
+
+    #[test]
+    fn parses_submit_command() {
+        let cli = Cli::parse_from([
+            "burst-cli",
+            "--config",
+            "my-config.json",
+            "submit",
+            "--output-dir",
+            "/tmp/out",
+            "echo",
+            "hello",
+        ]);
+
+        assert_eq!(cli.config, "my-config.json");
+        match cli.command {
+            Commands::Submit { output_dir, argv } => {
+                assert_eq!(output_dir, Some("/tmp/out".to_string()));
+                assert_eq!(argv, vec!["echo".to_string(), "hello".to_string()]);
+            }
+            _ => panic!("expected submit command"),
+        }
+    }
+
+    #[test]
+    fn parses_status_command() {
+        let cli = Cli::parse_from(["burst-cli", "status", "--job-id", "job-00000001"]);
+
+        match cli.command {
+            Commands::Status { job_id } => {
+                assert_eq!(job_id, "job-00000001");
+            }
+            _ => panic!("expected status command"),
+        }
+    }
+}
