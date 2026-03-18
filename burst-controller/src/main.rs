@@ -15,12 +15,14 @@ mod domain;
 mod scheduler;
 mod service;
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::controller_rpc_server::ControllerRpcServer;
-use scheduler::{FifoFactory, SchedulerRegistry};
+use scheduler::{FifoFactory, PowerOfTwoFactory, SchedulerRegistry};
 use tonic::transport::Server;
+use tracing_subscriber::EnvFilter;
 
 fn read_config_path() -> String {
     let mut args = std::env::args().skip(1);
@@ -36,7 +38,13 @@ fn read_config_path() -> String {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let use_ansi = std::io::stderr().is_terminal();
+    tracing_subscriber::fmt()
+        .with_ansi(use_ansi)
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
     let config_path = read_config_path();
     let config = match BurstConfig::load_from_path(&config_path) {
@@ -51,6 +59,7 @@ async fn main() {
 
     let mut registry = SchedulerRegistry::new();
     registry.register(FifoFactory);
+    registry.register(PowerOfTwoFactory);
 
     let strategy_name = config.controller.scheduler.clone();
     let available = registry.available();

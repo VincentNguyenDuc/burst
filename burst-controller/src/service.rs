@@ -7,7 +7,7 @@ use burst_core::proto::{
     AssignedJob, Empty, GetJobStatusRequest, GetJobStatusResponse, HeartbeatRequest,
     HeartbeatResponse, PollJobRequest, PollJobResponse, RegisterWorkerRequest,
     RegisterWorkerResponse, ReportJobResultRequest, ReportJobResultResponse, SubmitJobRequest,
-    SubmitJobResponse, controller_rpc_server::ControllerRpc, poll_job_response,
+    SubmitJobResponse, controller_rpc_server::ControllerRpc, job_spec, poll_job_response,
 };
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
@@ -28,23 +28,34 @@ struct ControllerInner {
 impl ControllerInner {
     fn schedule_pending(&mut self) {
         while let Some(decision) = self.scheduler.next(&mut self.scheduling) {
-            self.job_states
-                .insert(decision.job.id.clone(), "leased".to_string());
+            let job_id = decision.job.id.clone();
+            let worker_id = decision.worker_id.clone();
+            let job_type = job_type_label(decision.job.spec.r#type.as_ref());
+
+            self.job_states.insert(job_id.clone(), "leased".to_string());
             self.worker_queues
-                .entry(decision.worker_id)
+                .entry(worker_id.clone())
                 .or_default()
                 .push_back(decision.job);
+
+            tracing::info!(
+                job_id,
+                worker_id,
+                job_type,
+                scheduler = self.scheduler.name(),
+                "job leased to worker"
+            );
         }
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct ControllerService {
+pub struct ControllerService {
     inner: Arc<Mutex<ControllerInner>>,
 }
 
 impl ControllerService {
-    pub(crate) fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
+    pub fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ControllerInner {
                 next_job_id: 0,
@@ -60,6 +71,15 @@ impl ControllerService {
     }
 }
 
+fn job_type_label(job_type: Option<&job_spec::Type>) -> &'static str {
+    match job_type {
+        Some(job_spec::Type::Process(_)) => "process",
+        Some(job_spec::Type::Python(_)) => "python",
+        Some(job_spec::Type::Docker(_)) => "docker",
+        None => "unknown",
+    }
+}
+
 #[tonic::async_trait]
 impl ControllerRpc for ControllerService {
     async fn submit_job(
@@ -71,8 +91,32 @@ impl ControllerRpc for ControllerService {
             .spec
             .ok_or_else(|| Status::invalid_argument("missing job spec"))?;
 
-        if spec.command.trim().is_empty() {
-            return Err(Status::invalid_argument("command cannot be empty"));
+        let job_type = job_type_label(spec.r#type.as_ref());
+        tracing::info!(job_type, "received submit request");
+
+        match &spec.r#type {
+            Some(job_spec::Type::Process(process)) => {
+                if process.command.trim().is_empty() {
+                    tracing::warn!(job_type, "submit rejected: empty process command");
+                    return Err(Status::invalid_argument("command cannot be empty"));
+                }
+            }
+            Some(job_spec::Type::Python(python)) => {
+                if python.entry_point.trim().is_empty() {
+                    tracing::warn!(job_type, "submit rejected: empty python entry_point");
+                    return Err(Status::invalid_argument(
+                        "python entry_point cannot be empty",
+                    ));
+                }
+            }
+            Some(job_spec::Type::Docker(_)) => {
+                tracing::warn!(job_type, "submit rejected: unsupported job type");
+                return Err(Status::invalid_argument("unsupported job type"));
+            }
+            None => {
+                tracing::warn!("submit rejected: missing job type");
+                return Err(Status::invalid_argument("missing job type"));
+            }
         }
 
         let mut inner = self.inner.lock().await;
@@ -81,13 +125,12 @@ impl ControllerRpc for ControllerService {
 
         inner.scheduling.pending_jobs.push_back(Job {
             id: job_id.clone(),
-            command: spec.command,
-            args: spec.args,
-            output_dir: spec.output_dir,
+            spec,
         });
         inner
             .job_states
             .insert(job_id.clone(), "queued".to_string());
+        tracing::info!(job_id, job_type, "job queued");
         inner.schedule_pending();
 
         Ok(Response::new(SubmitJobResponse { job_id }))
@@ -105,6 +148,8 @@ impl ControllerRpc for ControllerService {
             .cloned()
             .unwrap_or_else(|| "unknown".to_string());
 
+        tracing::debug!(job_id = %req.job_id, state, "status requested");
+
         Ok(Response::new(GetJobStatusResponse {
             job_id: req.job_id,
             state,
@@ -116,7 +161,10 @@ impl ControllerRpc for ControllerService {
         request: Request<RegisterWorkerRequest>,
     ) -> Result<Response<RegisterWorkerResponse>, Status> {
         let req = request.into_inner();
+        let worker_id = req.worker_id.clone();
+        let slots = req.slots.max(1);
         if req.worker_id.trim().is_empty() {
+            tracing::warn!("worker registration rejected: empty worker_id");
             return Err(Status::invalid_argument("worker_id cannot be empty"));
         }
 
@@ -125,11 +173,13 @@ impl ControllerRpc for ControllerService {
             req.worker_id.clone(),
             WorkerState {
                 id: req.worker_id.clone(),
-                available_slots: req.slots.max(1),
+                available_slots: slots,
             },
         );
         inner.worker_queues.entry(req.worker_id).or_default();
         inner.schedule_pending();
+
+        tracing::info!(worker_id, slots, "worker registered");
 
         Ok(Response::new(RegisterWorkerResponse { accepted: true }))
     }
@@ -139,6 +189,7 @@ impl ControllerRpc for ControllerService {
         request: Request<PollJobRequest>,
     ) -> Result<Response<PollJobResponse>, Status> {
         let req = request.into_inner();
+        let worker_id = req.worker_id.clone();
         let mut inner = self.inner.lock().await;
         inner.schedule_pending();
 
@@ -149,17 +200,18 @@ impl ControllerRpc for ControllerService {
             .pop_front();
 
         let response = if let Some(job) = maybe_job {
+            let job_id = job.id.clone();
+            let job_type = job_type_label(job.spec.r#type.as_ref());
+            tracing::info!(worker_id, job_id, job_type, "poll assigned job");
+
             PollJobResponse {
                 result: Some(poll_job_response::Result::Job(AssignedJob {
                     job_id: job.id,
-                    spec: Some(burst_core::proto::JobSpec {
-                        command: job.command,
-                        args: job.args,
-                        output_dir: job.output_dir,
-                    }),
+                    spec: Some(job.spec),
                 })),
             }
         } else {
+            tracing::debug!(worker_id, "poll returned empty");
             PollJobResponse {
                 result: Some(poll_job_response::Result::Empty(Empty {})),
             }
@@ -180,10 +232,32 @@ impl ControllerRpc for ControllerService {
         } else {
             "failed"
         };
+        let job_id = req.job_id.clone();
+        let worker_id = req.worker_id.clone();
         inner.job_states.insert(req.job_id, new_state.to_string());
+
+        if req.error_message.is_empty() {
+            tracing::info!(
+                job_id,
+                worker_id,
+                exit_code = req.exit_code,
+                state = new_state,
+                "job result reported"
+            );
+        } else {
+            tracing::warn!(
+                job_id,
+                worker_id,
+                exit_code = req.exit_code,
+                state = new_state,
+                error_message = %req.error_message,
+                "job result reported with error"
+            );
+        }
 
         if let Some(worker) = inner.scheduling.workers.get_mut(&req.worker_id) {
             worker.available_slots += 1;
+            tracing::debug!(worker_id = %req.worker_id, available_slots = worker.available_slots, "worker slot released");
         }
         inner.schedule_pending();
 
@@ -197,6 +271,187 @@ impl ControllerRpc for ControllerService {
         let req = request.into_inner();
         let inner = self.inner.lock().await;
         let ok = inner.scheduling.workers.contains_key(&req.worker_id);
+        tracing::debug!(worker_id = %req.worker_id, ok, "heartbeat received");
         Ok(Response::new(HeartbeatResponse { ok }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use burst_core::proto::{
+        GetJobStatusRequest, JobSpec, PollJobRequest, ProcessSpec, PythonSpec,
+        RegisterWorkerRequest, ReportJobResultRequest, SubmitJobRequest,
+        controller_rpc_server::ControllerRpc,
+        job_spec::Type::{Process, Python},
+        poll_job_response,
+    };
+    use tonic::Request;
+
+    use crate::scheduler::{FifoFactory, SchedulerFactory};
+
+    use super::ControllerService;
+
+    fn service() -> ControllerService {
+        ControllerService::new(FifoFactory.build())
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_empty_command() {
+        let service = service();
+
+        let error = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "   ".to_string(),
+                        args: vec![],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect_err("empty command should be rejected");
+
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn submit_poll_report_updates_status() {
+        let service = service();
+
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        let job_id = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["hello".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect("submit should succeed")
+            .into_inner()
+            .job_id;
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        let assigned = match poll.result {
+            Some(poll_job_response::Result::Job(job)) => job,
+            _ => panic!("expected assigned job"),
+        };
+        assert_eq!(assigned.job_id, job_id);
+
+        service
+            .report_job_result(Request::new(ReportJobResultRequest {
+                worker_id: "worker-1".to_string(),
+                job_id: job_id.clone(),
+                exit_code: 0,
+                error_message: String::new(),
+            }))
+            .await
+            .expect("report should succeed");
+
+        let status = service
+            .get_job_status(Request::new(GetJobStatusRequest {
+                job_id: job_id.clone(),
+            }))
+            .await
+            .expect("status should succeed")
+            .into_inner();
+
+        assert_eq!(status.job_id, job_id);
+        assert_eq!(status.state, "succeeded");
+    }
+
+    #[tokio::test]
+    async fn poll_returns_empty_without_jobs() {
+        let service = service();
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        assert!(matches!(
+            poll.result,
+            Some(poll_job_response::Result::Empty(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn submit_python_poll_returns_python_spec() {
+        let service = service();
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: Some("/tmp/out".to_string()),
+                    r#type: Some(Python(PythonSpec {
+                        entry_point: "script.py".to_string(),
+                        args: vec!["--name".to_string(), "burst".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect("python submit should succeed");
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        let assigned = match poll.result {
+            Some(poll_job_response::Result::Job(job)) => job,
+            _ => panic!("expected assigned job"),
+        };
+
+        let spec = assigned.spec.expect("assigned job should include spec");
+        assert_eq!(spec.output_dir, Some("/tmp/out".to_string()));
+
+        match spec.r#type {
+            Some(Python(python)) => {
+                assert_eq!(python.entry_point, "script.py");
+                assert_eq!(python.args, vec!["--name".to_string(), "burst".to_string()]);
+            }
+            _ => panic!("expected python job type"),
+        }
     }
 }

@@ -122,16 +122,46 @@ Worker:
 cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1 --slots 1
 ```
 
-CLI submit:
+CLI submit process job:
 
 ```bash
-cargo run -p burst-cli -- --config burst.config.json submit /bin/echo hello
+cargo run -p burst-cli -- --config burst.config.json submit process /bin/echo hello
+```
+
+CLI submit python job:
+
+```bash
+cargo run -p burst-cli -- --config burst.config.json submit python -c "print('hello from python')"
+```
+
+CLI submit docker job:
+
+```bash
+cargo run -p burst-cli -- --config burst.config.json submit docker alpine:3.20 echo hello
 ```
 
 CLI status:
 
 ```bash
 cargo run -p burst-cli -- --config burst.config.json status --job-id job-00000001
+```
+
+## Tracing logs
+
+Controller and worker emit structured lifecycle logs for:
+
+- job submit validation and queueing
+- scheduler lease decisions (`job_id`, `worker_id`, `job_type`)
+- worker poll assignment and execution start/finish
+- result reporting and state transitions
+
+Default log level is `info`. Override with `RUST_LOG`.
+
+Examples:
+
+```bash
+RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
+RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
 ```
 
 ## Build and docs
@@ -142,7 +172,15 @@ Workspace check:
 cargo check
 ```
 
-Generate Rust API docs:
+Generate all docs (Rust + proto):
+
+```bash
+make docs
+```
+
+### Rust docs (`cargo doc`)
+
+Generate Rust API docs for all crates:
 
 ```bash
 cargo doc --workspace --no-deps
@@ -153,6 +191,38 @@ For private modules and internal architecture docs:
 ```bash
 cargo doc --workspace --no-deps --document-private-items
 ```
+
+Shortcuts:
+
+```bash
+make docs-rust
+make docs-rust-private
+```
+
+Output location:
+
+- `target/doc/index.html`
+
+### Proto docs
+
+Generate protobuf API docs from:
+
+- `burst-core/proto/burst/v1/control.proto`
+- `burst-core/proto/burst/v1/job.proto`
+- `burst-core/proto/burst/v1/worker.proto`
+
+```bash
+make docs-proto
+```
+
+Output location:
+
+- `docs/proto/burst.v1.md`
+
+Requirements for `make docs-proto`:
+
+- `protoc`
+- `protoc-gen-doc`
 
 ## Current limitations
 
