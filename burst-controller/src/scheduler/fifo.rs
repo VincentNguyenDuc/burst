@@ -44,6 +44,8 @@ impl super::SchedulerFactory for FifoFactory {
 mod tests {
     use std::collections::{HashMap, VecDeque};
 
+    use burst_core::proto::{JobSpec, ProcessSpec, job_spec::Type::Process};
+
     use crate::domain::{Job, SchedulingContext, WorkerState};
 
     use super::{FifoScheduler, SchedulerStrategy};
@@ -54,9 +56,13 @@ mod tests {
         let mut context = SchedulingContext {
             pending_jobs: VecDeque::from([Job {
                 id: "job-1".to_string(),
-                command: "echo".to_string(),
-                args: vec!["hello".to_string()],
-                output_dir: None,
+                spec: JobSpec {
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["hello".to_string()],
+                    })),
+                    ..Default::default()
+                },
             }]),
             workers: HashMap::new(),
         };
@@ -100,15 +106,23 @@ mod tests {
             pending_jobs: VecDeque::from([
                 Job {
                     id: "job-1".to_string(),
-                    command: "echo".to_string(),
-                    args: vec!["first".to_string()],
-                    output_dir: None,
+                    spec: JobSpec {
+                        r#type: Some(Process(ProcessSpec {
+                            command: "echo".to_string(),
+                            args: vec!["first".to_string()],
+                        })),
+                        ..Default::default()
+                    },
                 },
                 Job {
                     id: "job-2".to_string(),
-                    command: "echo".to_string(),
-                    args: vec!["second".to_string()],
-                    output_dir: None,
+                    spec: JobSpec {
+                        r#type: Some(Process(ProcessSpec {
+                            command: "echo".to_string(),
+                            args: vec!["second".to_string()],
+                        })),
+                        ..Default::default()
+                    },
                 },
             ]),
             workers: HashMap::from([(

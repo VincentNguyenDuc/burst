@@ -17,10 +17,17 @@ impl JobExecutor for PythonExecutor {
                 return (-1, "python entry_point cannot be empty".to_string());
             }
 
+            tracing::info!(
+                job_type = "python",
+                entry_point = %self.spec.entry_point,
+                args = ?self.spec.args,
+                "starting python execution"
+            );
+
             let mut command = tokio::process::Command::new("python3");
             command.arg(self.spec.entry_point);
             command.args(self.spec.args);
-            run_command_with_capture(command, context).await
+            run_command_with_capture(command, context, "python").await
         })
     }
 }

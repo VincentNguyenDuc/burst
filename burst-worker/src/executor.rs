@@ -68,6 +68,8 @@ pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
         "capturing job output"
     );
 
+    let job_id = job.job_id.clone();
+
     let context = ExecutionContext {
         stdout_file,
         stderr_file,
@@ -77,6 +79,8 @@ pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
         Ok(executor) => executor,
         Err(error) => return (-1, error),
     };
+
+    tracing::debug!(job_id, "executor resolved");
 
     executor.execute(context).await
 }
@@ -107,7 +111,10 @@ fn resolve_executor(
 async fn run_command_with_capture(
     mut command: tokio::process::Command,
     context: ExecutionContext,
+    executor_kind: &'static str,
 ) -> (i32, String) {
+    tracing::debug!(executor_kind, "spawning command");
+
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
@@ -156,5 +163,6 @@ async fn run_command_with_capture(
     }
 
     let code = status.code().unwrap_or(1);
+    tracing::info!(executor_kind, exit_code = code, "command completed");
     (code, String::new())
 }

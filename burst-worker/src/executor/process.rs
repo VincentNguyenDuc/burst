@@ -17,9 +17,16 @@ impl JobExecutor for ProcessExecutor {
                 return (-1, "process command cannot be empty".to_string());
             }
 
+            tracing::info!(
+                job_type = "process",
+                command = %self.spec.command,
+                args = ?self.spec.args,
+                "starting process execution"
+            );
+
             let mut command = tokio::process::Command::new(self.spec.command);
             command.args(self.spec.args);
-            run_command_with_capture(command, context).await
+            run_command_with_capture(command, context, "process").await
         })
     }
 }

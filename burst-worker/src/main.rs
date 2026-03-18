@@ -15,6 +15,7 @@
 
 mod executor;
 
+use std::io::IsTerminal;
 use std::time::Duration;
 
 use burst_core::config::BurstConfig;
@@ -25,6 +26,7 @@ use burst_core::proto::{
 use clap::Parser;
 use executor::execute_job;
 use tokio::time::sleep;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(about = "Burst worker service")]
@@ -40,7 +42,13 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let use_ansi = std::io::stderr().is_terminal();
+    tracing_subscriber::fmt()
+        .with_ansi(use_ansi)
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
     let args = Args::parse();
 
@@ -92,6 +100,17 @@ async fn main() {
         std::process::exit(1);
     }
 
+    tracing::info!(worker_id, slots, "worker registered");
+
+    fn assigned_job_type(job: &burst_core::proto::AssignedJob) -> &'static str {
+        match job.spec.as_ref().and_then(|spec| spec.r#type.as_ref()) {
+            Some(burst_core::proto::job_spec::Type::Process(_)) => "process",
+            Some(burst_core::proto::job_spec::Type::Python(_)) => "python",
+            Some(burst_core::proto::job_spec::Type::Docker(_)) => "docker",
+            None => "unknown",
+        }
+    }
+
     loop {
         let poll_response = match client
             .poll_job(PollJobRequest {
@@ -110,8 +129,21 @@ async fn main() {
         match poll_response.result {
             Some(poll_job_response::Result::Job(job)) => {
                 let job_id = job.job_id.clone();
-                tracing::info!(job_id, "executing job");
+                let job_type = assigned_job_type(&job);
+                tracing::info!(worker_id, job_id, job_type, "job received from poll");
                 let (exit_code, error_message) = execute_job(job).await;
+
+                if error_message.is_empty() {
+                    tracing::info!(worker_id, job_id, exit_code, "job execution finished");
+                } else {
+                    tracing::warn!(
+                        worker_id,
+                        job_id,
+                        exit_code,
+                        error_message = %error_message,
+                        "job execution finished with error"
+                    );
+                }
 
                 if let Err(error) = client
                     .report_job_result(ReportJobResultRequest {
@@ -123,9 +155,12 @@ async fn main() {
                     .await
                 {
                     tracing::warn!(error = %error, "failed to report job result");
+                } else {
+                    tracing::debug!(worker_id, "job result reported");
                 }
             }
             Some(poll_job_response::Result::Empty(_)) | None => {
+                tracing::debug!(worker_id, "poll returned no jobs");
                 sleep(poll_interval).await;
             }
         }

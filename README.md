@@ -122,16 +122,46 @@ Worker:
 cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1 --slots 1
 ```
 
-CLI submit:
+CLI submit process job:
 
 ```bash
-cargo run -p burst-cli -- --config burst.config.json submit /bin/echo hello
+cargo run -p burst-cli -- --config burst.config.json submit process /bin/echo hello
+```
+
+CLI submit python job:
+
+```bash
+cargo run -p burst-cli -- --config burst.config.json submit python -c "print('hello from python')"
+```
+
+CLI submit docker job:
+
+```bash
+cargo run -p burst-cli -- --config burst.config.json submit docker alpine:3.20 echo hello
 ```
 
 CLI status:
 
 ```bash
 cargo run -p burst-cli -- --config burst.config.json status --job-id job-00000001
+```
+
+## Tracing logs
+
+Controller and worker emit structured lifecycle logs for:
+
+- job submit validation and queueing
+- scheduler lease decisions (`job_id`, `worker_id`, `job_type`)
+- worker poll assignment and execution start/finish
+- result reporting and state transitions
+
+Default log level is `info`. Override with `RUST_LOG`.
+
+Examples:
+
+```bash
+RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
+RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
 ```
 
 ## Build and docs

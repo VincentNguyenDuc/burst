@@ -18,6 +18,14 @@ impl JobExecutor for DockerExecutor {
                 return (-1, "docker image cannot be empty".to_string());
             }
 
+            tracing::info!(
+                job_type = "docker",
+                image = %self.spec.image,
+                command = ?self.spec.command,
+                args = ?self.spec.args,
+                "starting docker execution"
+            );
+
             let mut command = tokio::process::Command::new("docker");
             command.arg("run");
             command.arg("--rm");
@@ -26,7 +34,7 @@ impl JobExecutor for DockerExecutor {
                 command.args(self.spec.command);
             }
             command.args(self.spec.args);
-            run_command_with_capture(command, context).await
+            run_command_with_capture(command, context, "docker").await
         })
     }
 }

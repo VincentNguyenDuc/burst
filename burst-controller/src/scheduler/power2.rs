@@ -81,6 +81,8 @@ impl super::SchedulerFactory for PowerOfTwoFactory {
 mod tests {
     use std::collections::{HashMap, VecDeque};
 
+    use burst_core::proto::{JobSpec, ProcessSpec, job_spec::Type::Process};
+
     use crate::domain::{Job, SchedulingContext, WorkerState};
 
     use super::{PowerOfTwoScheduler, SchedulerStrategy};
@@ -88,9 +90,13 @@ mod tests {
     fn job(id: &str) -> Job {
         Job {
             id: id.to_string(),
-            command: "echo".to_string(),
-            args: vec![id.to_string()],
-            output_dir: None,
+            spec: JobSpec {
+                r#type: Some(Process(ProcessSpec {
+                    command: "echo".to_string(),
+                    args: vec![id.to_string()],
+                })),
+                ..Default::default()
+            },
         }
     }
 
