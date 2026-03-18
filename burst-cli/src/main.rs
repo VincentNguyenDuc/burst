@@ -11,7 +11,8 @@
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::{
-    GetJobStatusRequest, JobSpec, SubmitJobRequest, controller_rpc_client::ControllerRpcClient,
+    GetJobStatusRequest, JobSpec, ProcessSpec, SubmitJobRequest,
+    controller_rpc_client::ControllerRpcClient, job_spec::Type::Process,
 };
 use clap::{Parser, Subcommand};
 
@@ -70,9 +71,9 @@ async fn main() {
             match client
                 .submit_job(SubmitJobRequest {
                     spec: Some(JobSpec {
-                        command,
-                        args,
                         output_dir,
+                        r#type: Some(Process(ProcessSpec { command, args })),
+                        ..Default::default()
                     }),
                 })
                 .await

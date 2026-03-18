@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package burst.v1;
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  uint32 slots     = 2;
+}
+
+message RegisterWorkerResponse {
+  bool accepted = 1;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+}
+
+message HeartbeatResponse {
+  bool ok = 1;
+}
+
+message Empty {}

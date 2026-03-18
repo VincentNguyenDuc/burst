@@ -5,9 +5,12 @@ use std::{
 
 use burst_core::proto::{
     AssignedJob, Empty, GetJobStatusRequest, GetJobStatusResponse, HeartbeatRequest,
-    HeartbeatResponse, PollJobRequest, PollJobResponse, RegisterWorkerRequest,
-    RegisterWorkerResponse, ReportJobResultRequest, ReportJobResultResponse, SubmitJobRequest,
-    SubmitJobResponse, controller_rpc_server::ControllerRpc, poll_job_response,
+    HeartbeatResponse, JobSpec, PollJobRequest, PollJobResponse, ProcessSpec,
+    RegisterWorkerRequest, RegisterWorkerResponse, ReportJobResultRequest, ReportJobResultResponse,
+    SubmitJobRequest, SubmitJobResponse,
+    controller_rpc_server::ControllerRpc,
+    job_spec::{self, Type::Process},
+    poll_job_response,
 };
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
@@ -71,7 +74,12 @@ impl ControllerRpc for ControllerService {
             .spec
             .ok_or_else(|| Status::invalid_argument("missing job spec"))?;
 
-        if spec.command.trim().is_empty() {
+        let process_type = match spec.r#type {
+            Some(job_spec::Type::Process(process)) => process,
+            _ => return Err(Status::invalid_argument("unsupported job type")),
+        };
+
+        if process_type.command.trim().is_empty() {
             return Err(Status::invalid_argument("command cannot be empty"));
         }
 
@@ -81,8 +89,8 @@ impl ControllerRpc for ControllerService {
 
         inner.scheduling.pending_jobs.push_back(Job {
             id: job_id.clone(),
-            command: spec.command,
-            args: spec.args,
+            command: process_type.command,
+            args: process_type.args,
             output_dir: spec.output_dir,
         });
         inner
@@ -152,10 +160,13 @@ impl ControllerRpc for ControllerService {
             PollJobResponse {
                 result: Some(poll_job_response::Result::Job(AssignedJob {
                     job_id: job.id,
-                    spec: Some(burst_core::proto::JobSpec {
-                        command: job.command,
-                        args: job.args,
+                    spec: Some(JobSpec {
                         output_dir: job.output_dir,
+                        r#type: Some(Process(ProcessSpec {
+                            command: job.command,
+                            args: job.args,
+                        })),
+                        ..Default::default()
                     }),
                 })),
             }
@@ -204,9 +215,9 @@ impl ControllerRpc for ControllerService {
 #[cfg(test)]
 mod tests {
     use burst_core::proto::{
-        GetJobStatusRequest, JobSpec, PollJobRequest, RegisterWorkerRequest,
+        GetJobStatusRequest, JobSpec, PollJobRequest, ProcessSpec, RegisterWorkerRequest,
         ReportJobResultRequest, SubmitJobRequest, controller_rpc_server::ControllerRpc,
-        poll_job_response,
+        job_spec::Type::Process, poll_job_response,
     };
     use tonic::Request;
 
@@ -225,9 +236,12 @@ mod tests {
         let error = service
             .submit_job(Request::new(SubmitJobRequest {
                 spec: Some(JobSpec {
-                    command: "   ".to_string(),
-                    args: vec![],
                     output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "   ".to_string(),
+                        args: vec![],
+                    })),
+                    ..Default::default()
                 }),
             }))
             .await
@@ -251,9 +265,12 @@ mod tests {
         let job_id = service
             .submit_job(Request::new(SubmitJobRequest {
                 spec: Some(JobSpec {
-                    command: "echo".to_string(),
-                    args: vec!["hello".to_string()],
                     output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["hello".to_string()],
+                    })),
+                    ..Default::default()
                 }),
             }))
             .await

@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package burst.v1;
+import "burst/v1/worker.proto";
+
+message ProcessSpec {
+  string          command = 1;
+  repeated string args    = 2;
+}
+
+message PythonSpec {
+  string          entry_point = 1;
+  repeated string args        = 2;
+}
+
+message DockerSpec {
+  string          image   = 1;
+  repeated string command = 2;
+  repeated string args    = 3;
+}
+
+message JobSpec {
+  string          command    = 1 [deprecated = true];
+  repeated string args       = 2 [deprecated = true];
+  optional string output_dir = 3;
+
+  oneof type {
+    ProcessSpec process = 4;
+    PythonSpec  python  = 5;
+    DockerSpec  docker  = 6;
+  }
+}
+
+message SubmitJobRequest {
+  JobSpec spec = 1;
+}
+
+message SubmitJobResponse {
+  string job_id = 1;
+}
+
+message GetJobStatusRequest {
+  string job_id = 1;
+}
+
+message GetJobStatusResponse {
+  string job_id = 1;
+  string state  = 2;
+}
+
+message PollJobRequest {
+  string worker_id = 1;
+}
+
+message AssignedJob {
+  string  job_id = 1;
+  JobSpec spec   = 2;
+}
+
+message PollJobResponse {
+  oneof result {
+    AssignedJob job   = 1;
+    Empty       empty = 2;
+  }
+}
+
+message ReportJobResultRequest {
+  string worker_id     = 1;
+  string job_id        = 2;
+  int32  exit_code     = 3;
+  string error_message = 4;
+}
+
+message ReportJobResultResponse {
+  bool accepted = 1;
+}
