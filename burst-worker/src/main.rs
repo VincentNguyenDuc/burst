@@ -13,8 +13,10 @@
 //! - `--config <path>` (default `burst.config.json`)
 //! - `--worker-id <id>` must match a `worker_id` in the `workers` list
 
+mod executor;
+
+use std::io::IsTerminal;
 use std::time::Duration;
-use std::{path::PathBuf, process::Stdio};
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::{
@@ -22,8 +24,9 @@ use burst_core::proto::{
     controller_rpc_client::ControllerRpcClient, poll_job_response,
 };
 use clap::Parser;
-use tokio::io;
+use executor::execute_job;
 use tokio::time::sleep;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(about = "Burst worker service")]
@@ -37,120 +40,15 @@ struct Args {
     worker_id: String,
 }
 
-async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
-    let Some(spec) = job.spec else {
-        return (-1, "missing job spec".to_string());
-    };
-
-    let output_dir: PathBuf = match spec.output_dir {
-        Some(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
-        _ => match std::env::current_dir() {
-            Ok(dir) => dir,
-            Err(error) => return (-1, format!("failed to resolve current dir: {error}")),
-        },
-    };
-
-    if let Err(error) = tokio::fs::create_dir_all(&output_dir).await {
-        return (
-            -1,
-            format!(
-                "failed to create output_dir '{}': {error}",
-                output_dir.display()
-            ),
-        );
-    }
-
-    let stdout_path = output_dir.join(format!("{}.stdout", job.job_id));
-    let stderr_path = output_dir.join(format!("{}.stderr", job.job_id));
-
-    let stdout_file = match tokio::fs::File::create(&stdout_path).await {
-        Ok(f) => f,
-        Err(error) => {
-            return (
-                -1,
-                format!(
-                    "failed to create stdout file '{}': {error}",
-                    stdout_path.display()
-                ),
-            );
-        }
-    };
-    let stderr_file = match tokio::fs::File::create(&stderr_path).await {
-        Ok(f) => f,
-        Err(error) => {
-            return (
-                -1,
-                format!(
-                    "failed to create stderr file '{}': {error}",
-                    stderr_path.display()
-                ),
-            );
-        }
-    };
-
-    tracing::info!(
-        job_id = job.job_id,
-        stdout = %stdout_path.display(),
-        stderr = %stderr_path.display(),
-        "capturing job output"
-    );
-
-    let mut command = tokio::process::Command::new(spec.command);
-    command.args(spec.args);
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => return (-1, error.to_string()),
-    };
-
-    let mut child_stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => return (-1, "failed to capture child stdout".to_string()),
-    };
-    let mut child_stderr = match child.stderr.take() {
-        Some(s) => s,
-        None => return (-1, "failed to capture child stderr".to_string()),
-    };
-
-    let stdout_task = tokio::spawn(async move {
-        let mut out = stdout_file;
-        io::copy(&mut child_stdout, &mut out).await
-    });
-    let stderr_task = tokio::spawn(async move {
-        let mut err = stderr_file;
-        io::copy(&mut child_stderr, &mut err).await
-    });
-
-    let status = match child.wait().await {
-        Ok(status) => status,
-        Err(error) => return (-1, error.to_string()),
-    };
-
-    let stdout_copied = stdout_task
-        .await
-        .map_err(|e| e.to_string())
-        .and_then(|r| r.map_err(|e| e.to_string()));
-    if let Err(error) = stdout_copied {
-        return (-1, format!("failed to write stdout: {error}"));
-    }
-
-    let stderr_copied = stderr_task
-        .await
-        .map_err(|e| e.to_string())
-        .and_then(|r| r.map_err(|e| e.to_string()));
-    if let Err(error) = stderr_copied {
-        return (-1, format!("failed to write stderr: {error}"));
-    }
-
-    let code = status.code().unwrap_or(1);
-    (code, String::new())
-}
-
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let use_ansi = std::io::stderr().is_terminal();
+    tracing_subscriber::fmt()
+        .with_ansi(use_ansi)
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
     let args = Args::parse();
 
@@ -202,6 +100,17 @@ async fn main() {
         std::process::exit(1);
     }
 
+    tracing::info!(worker_id, slots, "worker registered");
+
+    fn assigned_job_type(job: &burst_core::proto::AssignedJob) -> &'static str {
+        match job.spec.as_ref().and_then(|spec| spec.r#type.as_ref()) {
+            Some(burst_core::proto::job_spec::Type::Process(_)) => "process",
+            Some(burst_core::proto::job_spec::Type::Python(_)) => "python",
+            Some(burst_core::proto::job_spec::Type::Docker(_)) => "docker",
+            None => "unknown",
+        }
+    }
+
     loop {
         let poll_response = match client
             .poll_job(PollJobRequest {
@@ -220,8 +129,21 @@ async fn main() {
         match poll_response.result {
             Some(poll_job_response::Result::Job(job)) => {
                 let job_id = job.job_id.clone();
-                tracing::info!(job_id, "executing job");
+                let job_type = assigned_job_type(&job);
+                tracing::info!(worker_id, job_id, job_type, "job received from poll");
                 let (exit_code, error_message) = execute_job(job).await;
+
+                if error_message.is_empty() {
+                    tracing::info!(worker_id, job_id, exit_code, "job execution finished");
+                } else {
+                    tracing::warn!(
+                        worker_id,
+                        job_id,
+                        exit_code,
+                        error_message = %error_message,
+                        "job execution finished with error"
+                    );
+                }
 
                 if let Err(error) = client
                     .report_job_result(ReportJobResultRequest {
@@ -233,11 +155,168 @@ async fn main() {
                     .await
                 {
                     tracing::warn!(error = %error, "failed to report job result");
+                } else {
+                    tracing::debug!(worker_id, "job result reported");
                 }
             }
             Some(poll_job_response::Result::Empty(_)) | None => {
+                tracing::debug!(worker_id, "poll returned no jobs");
                 sleep(poll_interval).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use burst_core::proto::{
+        DockerSpec, ProcessSpec, PythonSpec,
+        job_spec::Type::{Docker, Process, Python},
+    };
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use burst_core::proto::{AssignedJob, JobSpec};
+
+    use super::execute_job;
+
+    fn temp_output_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("burst-worker-{name}-{nanos}"))
+    }
+
+    #[tokio::test]
+    async fn execute_job_fails_without_spec() {
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-1".to_string(),
+            spec: None,
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "missing job spec");
+    }
+
+    #[tokio::test]
+    async fn execute_job_captures_stdout_and_stderr() {
+        let output_dir = temp_output_dir("stdout-stderr");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-2".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Process(ProcessSpec {
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-c".to_string(), "echo hello; echo oops 1>&2".to_string()],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, 0);
+        assert_eq!(error_message, "");
+
+        let stdout = fs::read_to_string(output_dir.join("job-2.stdout"))
+            .expect("stdout file should be created");
+        let stderr = fs::read_to_string(output_dir.join("job-2.stderr"))
+            .expect("stderr file should be created");
+
+        assert!(stdout.contains("hello"));
+        assert!(stderr.contains("oops"));
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_returns_nonzero_exit_code() {
+        let output_dir = temp_output_dir("nonzero");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-3".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Process(ProcessSpec {
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-c".to_string(), "exit 7".to_string()],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error_message, "");
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_rejects_python_without_entrypoint() {
+        let output_dir = temp_output_dir("python-empty-entrypoint");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-4".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Python(PythonSpec {
+                    entry_point: "".to_string(),
+                    args: vec![],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "python entry_point cannot be empty");
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_rejects_docker_without_image() {
+        let output_dir = temp_output_dir("docker-empty-image");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-5".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Docker(DockerSpec {
+                    image: "".to_string(),
+                    command: vec![],
+                    args: vec![],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "docker image cannot be empty");
+
+        let _ = fs::remove_dir_all(output_dir);
     }
 }

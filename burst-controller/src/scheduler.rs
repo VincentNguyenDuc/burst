@@ -4,11 +4,13 @@
 //! and register a factory in [`SchedulerRegistry`].
 
 mod fifo;
+mod power2;
 mod registry;
 
 use crate::domain::{SchedulingContext, SchedulingDecision};
 
 pub use fifo::FifoFactory;
+pub use power2::PowerOfTwoFactory;
 pub use registry::SchedulerRegistry;
 
 /// Scheduling algorithm interface.

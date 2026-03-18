@@ -2,13 +2,13 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use burst_core::proto::JobSpec;
+
 /// Job assigned by the controller to a worker.
 #[derive(Debug, Clone)]
 pub struct Job {
     pub id: String,
-    pub command: String,
-    pub args: Vec<String>,
-    pub output_dir: Option<String>,
+    pub spec: JobSpec,
 }
 
 /// Worker runtime capacity tracked by controller.
