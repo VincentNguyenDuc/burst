@@ -1,4 +1,4 @@
-.PHONY: controller submit status cluster-up cluster-down cluster-status clean
+.PHONY: controller submit status cluster-up cluster-down cluster-status docs docs-rust docs-rust-private docs-proto clean
 
 CMD ?= /bin/echo hello-from-burst
 ARGV ?=
@@ -54,3 +54,18 @@ cluster-down:
 clean:
 	rm -rf "$(BURST_STATE_DIR)"
 	cargo clean
+
+docs: docs-rust docs-proto
+
+docs-rust:
+	cargo doc --workspace --no-deps --quiet
+
+docs-proto:
+	mkdir -p docs/proto
+	protoc \
+		-I burst-core/proto \
+		--doc_out=docs/proto \
+		--doc_opt=markdown,burst.v1.md \
+		burst-core/proto/burst/v1/control.proto \
+		burst-core/proto/burst/v1/job.proto \
+		burst-core/proto/burst/v1/worker.proto

@@ -3,60 +3,78 @@ syntax = "proto3";
 package burst.v1;
 import "burst/v1/worker.proto";
 
+// ProcessSpec executes a native process directly on the worker host.
 message ProcessSpec {
+  // Executable path or command name.
   string          command = 1;
+  // Command-line arguments passed to the process.
   repeated string args    = 2;
 }
 
+// PythonSpec executes a Python entry point via the worker's python runtime.
 message PythonSpec {
+  // Python entry point. Example: script path or '-c'.
   string          entry_point = 1;
+  // Arguments passed after the entry point.
   repeated string args        = 2;
 }
 
+// DockerSpec executes a containerized command using `docker run`.
 message DockerSpec {
+  // Docker image reference to run.
   string          image   = 1;
+  // Optional container command override.
   repeated string command = 2;
+  // Arguments passed to the container command.
   repeated string args    = 3;
 }
 
+// JobSpec defines what to execute and where to store captured logs.
 message JobSpec {
-  string          command    = 1 [deprecated = true];
-  repeated string args       = 2 [deprecated = true];
-  optional string output_dir = 3;
+  // Output directory for `<job_id>.stdout` and `<job_id>.stderr`.
+  optional string output_dir = 1;
 
+  // Exactly one execution type must be selected.
   oneof type {
-    ProcessSpec process = 4;
-    PythonSpec  python  = 5;
-    DockerSpec  docker  = 6;
+    ProcessSpec process = 2;
+    PythonSpec  python  = 3;
+    DockerSpec  docker  = 4;
   }
 }
 
+// SubmitJobRequest sends a new job spec to the controller.
 message SubmitJobRequest {
   JobSpec spec = 1;
 }
 
+// SubmitJobResponse returns the generated job id.
 message SubmitJobResponse {
   string job_id = 1;
 }
 
+// GetJobStatusRequest asks for the current state of a job.
 message GetJobStatusRequest {
   string job_id = 1;
 }
 
+// GetJobStatusResponse returns job id and current state.
 message GetJobStatusResponse {
   string job_id = 1;
   string state  = 2;
 }
 
+// PollJobRequest asks the controller for work for a worker.
 message PollJobRequest {
   string worker_id = 1;
 }
 
+// AssignedJob is a job leased by the controller to a worker.
 message AssignedJob {
   string  job_id = 1;
   JobSpec spec   = 2;
 }
 
+// PollJobResponse returns either an assigned job or an empty marker.
 message PollJobResponse {
   oneof result {
     AssignedJob job   = 1;
@@ -64,13 +82,17 @@ message PollJobResponse {
   }
 }
 
+// ReportJobResultRequest reports completion status for an assigned job.
 message ReportJobResultRequest {
   string worker_id     = 1;
   string job_id        = 2;
+  // Process exit code. Convention: 0 means success.
   int32  exit_code     = 3;
+  // Human-readable error details when available.
   string error_message = 4;
 }
 
+// ReportJobResultResponse acknowledges whether the result was accepted.
 message ReportJobResultResponse {
   bool accepted = 1;
 }

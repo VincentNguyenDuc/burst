@@ -42,12 +42,12 @@ impl ControllerInner {
 }
 
 #[derive(Clone)]
-pub(crate) struct ControllerService {
+pub struct ControllerService {
     inner: Arc<Mutex<ControllerInner>>,
 }
 
 impl ControllerService {
-    pub(crate) fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
+    pub fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ControllerInner {
                 next_job_id: 0,

@@ -134,7 +134,10 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use burst_core::proto::{ProcessSpec, job_spec::Type::Process};
+    use burst_core::proto::{
+        DockerSpec, ProcessSpec, PythonSpec,
+        job_spec::Type::{Docker, Process, Python},
+    };
     use std::{
         fs,
         path::PathBuf,
@@ -223,6 +226,61 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error_message, "");
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_rejects_python_without_entrypoint() {
+        let output_dir = temp_output_dir("python-empty-entrypoint");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-4".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Python(PythonSpec {
+                    entry_point: "".to_string(),
+                    args: vec![],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "python entry_point cannot be empty");
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[tokio::test]
+    async fn execute_job_rejects_docker_without_image() {
+        let output_dir = temp_output_dir("docker-empty-image");
+        let output_dir_str = output_dir
+            .to_str()
+            .expect("temp output path is not valid UTF-8")
+            .to_string();
+
+        let (exit_code, error_message) = execute_job(AssignedJob {
+            job_id: "job-5".to_string(),
+            spec: Some(JobSpec {
+                output_dir: Some(output_dir_str),
+                r#type: Some(Docker(DockerSpec {
+                    image: "".to_string(),
+                    command: vec![],
+                    args: vec![],
+                })),
+                ..Default::default()
+            }),
+        })
+        .await;
+
+        assert_eq!(exit_code, -1);
+        assert_eq!(error_message, "docker image cannot be empty");
 
         let _ = fs::remove_dir_all(output_dir);
     }

@@ -1,5 +1,13 @@
+mod docker;
+mod process;
+mod python;
+
+pub use docker::DockerExecutor;
+pub use process::ProcessExecutor;
+pub use python::PythonExecutor;
+
 use burst_core::proto::job_spec;
-use std::{path::PathBuf, process::Stdio};
+use std::{future::Future, path::PathBuf, pin::Pin, process::Stdio};
 use tokio::io;
 
 pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
@@ -7,7 +15,7 @@ pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
         return (-1, "missing job spec".to_string());
     };
 
-    let output_dir: PathBuf = match spec.output_dir {
+    let output_dir: PathBuf = match spec.output_dir.as_deref() {
         Some(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
         _ => match std::env::current_dir() {
             Ok(dir) => dir,
@@ -60,16 +68,46 @@ pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
         "capturing job output"
     );
 
-    let process = match spec.r#type {
-        Some(job_spec::Type::Process(process)) => process,
-        _ => return (-1, "unsupported job type".to_string()),
+    let context = ExecutionContext {
+        stdout_file,
+        stderr_file,
     };
 
-    let command_str = process.command;
-    let args = process.args;
+    let executor = match resolve_executor(spec) {
+        Ok(executor) => executor,
+        Err(error) => return (-1, error),
+    };
 
-    let mut command = tokio::process::Command::new(command_str);
-    command.args(args);
+    executor.execute(context).await
+}
+
+struct ExecutionContext {
+    stdout_file: tokio::fs::File,
+    stderr_file: tokio::fs::File,
+}
+
+trait JobExecutor {
+    fn execute(
+        self: Box<Self>,
+        context: ExecutionContext,
+    ) -> Pin<Box<dyn Future<Output = (i32, String)> + Send>>;
+}
+
+fn resolve_executor(
+    spec: burst_core::proto::JobSpec,
+) -> Result<Box<dyn JobExecutor + Send>, String> {
+    match spec.r#type {
+        Some(job_spec::Type::Process(process)) => Ok(Box::new(ProcessExecutor { spec: process })),
+        Some(job_spec::Type::Python(python)) => Ok(Box::new(PythonExecutor { spec: python })),
+        Some(job_spec::Type::Docker(docker)) => Ok(Box::new(DockerExecutor { spec: docker })),
+        None => Err("missing job type".to_string()),
+    }
+}
+
+async fn run_command_with_capture(
+    mut command: tokio::process::Command,
+    context: ExecutionContext,
+) -> (i32, String) {
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
@@ -88,11 +126,11 @@ pub async fn execute_job(job: burst_core::proto::AssignedJob) -> (i32, String) {
     };
 
     let stdout_task = tokio::spawn(async move {
-        let mut out = stdout_file;
+        let mut out = context.stdout_file;
         io::copy(&mut child_stdout, &mut out).await
     });
     let stderr_task = tokio::spawn(async move {
-        let mut err = stderr_file;
+        let mut err = context.stderr_file;
         io::copy(&mut child_stderr, &mut err).await
     });
 

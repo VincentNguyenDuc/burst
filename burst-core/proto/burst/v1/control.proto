@@ -4,11 +4,23 @@ package burst.v1;
 import "burst/v1/job.proto";
 import "burst/v1/worker.proto";
 
+// ControllerRpc defines the control-plane API used by CLI and workers.
 service ControllerRpc {
+  // SubmitJob enqueues a new job and returns the generated job id.
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+
+  // GetJobStatus returns the current lifecycle state for a job id.
   rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
+
+  // RegisterWorker registers a worker instance and its available slots.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+  // PollJob returns either an assigned job or an explicit empty response.
   rpc PollJob(PollJobRequest) returns (PollJobResponse);
+
+  // ReportJobResult reports execution outcome for a previously assigned job.
   rpc ReportJobResult(ReportJobResultRequest) returns (ReportJobResultResponse);
+
+  // Heartbeat confirms worker liveness.
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }

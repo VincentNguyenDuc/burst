@@ -142,7 +142,15 @@ Workspace check:
 cargo check
 ```
 
-Generate Rust API docs:
+Generate all docs (Rust + proto):
+
+```bash
+make docs
+```
+
+### Rust docs (`cargo doc`)
+
+Generate Rust API docs for all crates:
 
 ```bash
 cargo doc --workspace --no-deps
@@ -153,6 +161,38 @@ For private modules and internal architecture docs:
 ```bash
 cargo doc --workspace --no-deps --document-private-items
 ```
+
+Shortcuts:
+
+```bash
+make docs-rust
+make docs-rust-private
+```
+
+Output location:
+
+- `target/doc/index.html`
+
+### Proto docs
+
+Generate protobuf API docs from:
+
+- `burst-core/proto/burst/v1/control.proto`
+- `burst-core/proto/burst/v1/job.proto`
+- `burst-core/proto/burst/v1/worker.proto`
+
+```bash
+make docs-proto
+```
+
+Output location:
+
+- `docs/proto/burst.v1.md`
+
+Requirements for `make docs-proto`:
+
+- `protoc`
+- `protoc-gen-doc`
 
 ## Current limitations
 

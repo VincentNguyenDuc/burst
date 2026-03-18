@@ -2,21 +2,28 @@ syntax = "proto3";
 
 package burst.v1;
 
+// RegisterWorkerRequest registers a worker with id and concurrency slots.
 message RegisterWorkerRequest {
+  // Stable unique worker identifier.
   string worker_id = 1;
+  // Number of concurrent jobs this worker can accept.
   uint32 slots     = 2;
 }
 
+// RegisterWorkerResponse indicates whether registration succeeded.
 message RegisterWorkerResponse {
   bool accepted = 1;
 }
 
+// HeartbeatRequest pings worker liveness.
 message HeartbeatRequest {
   string worker_id = 1;
 }
 
+// HeartbeatResponse indicates heartbeat acceptance.
 message HeartbeatResponse {
   bool ok = 1;
 }
 
+// Empty is an explicit empty payload for oneof responses.
 message Empty {}
