@@ -36,6 +36,7 @@ impl BurstConfig {
 pub struct ControllerConfig {
     pub bind_addr: String,
     pub router: String,
+    pub submission_buffer_capacity: usize,
 }
 
 impl Default for ControllerConfig {
@@ -43,6 +44,7 @@ impl Default for ControllerConfig {
         Self {
             bind_addr: "127.0.0.1:50051".to_string(),
             router: "roundrobin".to_string(),
+            submission_buffer_capacity: 32,
         }
     }
 }
@@ -109,6 +111,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         assert_eq!(config.controller.router, "roundrobin");
+        assert_eq!(config.controller.submission_buffer_capacity, 32);
         assert_eq!(config.workers.len(), 1);
         assert_eq!(config.workers[0].worker_id, "worker-1");
         assert_eq!(config.cli.controller_addr, "http://127.0.0.1:50051");
@@ -120,7 +123,11 @@ mod tests {
         fs::write(
             &path,
             r#"{
-    "controller": { "bind_addr": "127.0.0.1:7000", "router": "roundrobin" },
+        "controller": {
+            "bind_addr": "127.0.0.1:7000",
+            "router": "roundrobin",
+            "submission_buffer_capacity": 48
+        },
   "workers": [
     {
       "worker_id": "worker-x",
@@ -139,6 +146,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         assert_eq!(config.controller.bind_addr, "127.0.0.1:7000");
+        assert_eq!(config.controller.submission_buffer_capacity, 48);
         assert_eq!(config.workers[0].slots, 3);
         assert_eq!(config.cli.controller_addr, "http://127.0.0.1:7000");
     }

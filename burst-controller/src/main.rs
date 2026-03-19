@@ -75,7 +75,10 @@ async fn main() {
                 }
             };
 
-            let service = service::ControllerService::new(selected);
+            let service = service::ControllerService::new(
+                selected,
+                config.controller.submission_buffer_capacity,
+            );
 
             tracing::info!(scheduler = strategy_name, bind = %address, "controller started");
 

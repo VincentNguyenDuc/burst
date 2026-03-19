@@ -45,7 +45,7 @@ All components load the same JSON file (`burst.config.json`) so runtime settings
 
 Top-level sections:
 
-- `controller`: bind address and scheduler strategy
+- `controller`: bind address, scheduler strategy, and submission buffer capacity
 - `worker`: controller address, default slots, poll/retry timing
 - `cli`: controller address used by submit/status commands
 - `cluster`: local test-cluster worker count and worker slots for Makefile automation

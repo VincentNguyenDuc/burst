@@ -1,7 +1,8 @@
 {
     "controller": {
         "bind_addr": "127.0.0.1:50051",
-        "router": "power2"
+        "router": "roundrobin",
+        "submission_buffer_capacity": 32
     },
     "workers": [
         {
