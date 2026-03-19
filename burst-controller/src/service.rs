@@ -287,12 +287,12 @@ mod tests {
     };
     use tonic::Request;
 
-    use crate::router::{FifoFactory, RouterFactory};
+    use crate::router::{RoundRobinFactory, RouterFactory};
 
     use super::ControllerService;
 
     fn service() -> ControllerService {
-        ControllerService::new(FifoFactory.build())
+        ControllerService::new(RoundRobinFactory.build())
     }
 
     #[tokio::test]

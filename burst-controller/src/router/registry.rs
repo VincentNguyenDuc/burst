@@ -34,7 +34,7 @@ impl RouterRegistry {
 #[cfg(test)]
 mod tests {
     use super::RouterRegistry;
-    use crate::router::{FifoFactory, RouterFactory};
+    use crate::router::{RoundRobinFactory, RouterFactory};
 
     struct AlphaFactory;
 
@@ -44,29 +44,29 @@ mod tests {
         }
 
         fn build(&self) -> Box<dyn crate::router::RouterStrategy> {
-            FifoFactory.build()
+            RoundRobinFactory.build()
         }
     }
 
     #[test]
     fn build_returns_registered_strategy() {
         let mut registry = RouterRegistry::new();
-        registry.register(FifoFactory);
+        registry.register(RoundRobinFactory);
 
-        let strategy = registry.build("fifo");
+        let strategy = registry.build("roundrobin");
 
         assert!(strategy.is_some());
-        assert_eq!(strategy.expect("strategy missing").name(), "fifo");
+        assert_eq!(strategy.expect("strategy missing").name(), "roundrobin");
     }
 
     #[test]
     fn available_is_sorted() {
         let mut registry = RouterRegistry::new();
-        registry.register(FifoFactory);
+        registry.register(RoundRobinFactory);
         registry.register(AlphaFactory);
 
         let names = registry.available();
 
-        assert_eq!(names, vec!["alpha".to_string(), "fifo".to_string()]);
+        assert_eq!(names, vec!["alpha".to_string(), "roundrobin".to_string()]);
     }
 }

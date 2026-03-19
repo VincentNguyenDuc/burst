@@ -8,7 +8,7 @@ Current POC scope:
 - N worker processes
 - 1 CLI client session
 - gRPC communication between all components
-- In-memory FIFO scheduling
+- In-memory round-robin scheduling
 
 Configuration is centralized in `burst.config.json` at the repository root.
 
@@ -36,7 +36,7 @@ Workers register with `worker_id` and `slots`, then repeatedly poll for work.
 
 Scheduling is pluggable through a strategy trait and registry in the controller.
 
-- default strategy: FIFO
+- default strategy: roundrobin
 - strategy selected by `controller.scheduler` in `burst.config.json`
 
 ## Shared configuration

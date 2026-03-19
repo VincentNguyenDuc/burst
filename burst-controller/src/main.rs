@@ -4,7 +4,7 @@
 //!
 //! - accept job submissions from CLI via gRPC
 //! - track in-memory job/worker state
-//! - apply pluggable scheduler strategy (default: FIFO)
+//! - apply pluggable scheduler strategy (default: round-robin)
 //! - lease jobs to workers and update terminal job state on report
 //!
 //! Configuration:
@@ -20,7 +20,7 @@ use std::net::SocketAddr;
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::controller_rpc_server::ControllerRpcServer;
-use router::{FifoFactory, PowerOfTwoFactory, RouterRegistry};
+use router::{PowerOfTwoFactory, RoundRobinFactory, RouterRegistry};
 use tonic::transport::Server;
 use tracing_subscriber::EnvFilter;
 
@@ -58,7 +58,7 @@ async fn main() {
     let bind_addr = config.controller.bind_addr.clone();
 
     let mut registry = RouterRegistry::new();
-    registry.register(FifoFactory);
+    registry.register(RoundRobinFactory);
     registry.register(PowerOfTwoFactory);
 
     let strategy_name = config.controller.router.clone();

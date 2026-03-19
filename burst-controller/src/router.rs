@@ -3,15 +3,15 @@
 //! A scheduler implementation only needs to implement [`RouterStrategy`]
 //! and register a factory in [`RouterRegistry`].
 
-mod fifo;
 mod power2;
 mod registry;
+mod roundrobin;
 
 use crate::domain::{RoutingContext, RoutingDecision};
 
-pub use fifo::FifoFactory;
 pub use power2::PowerOfTwoFactory;
 pub use registry::RouterRegistry;
+pub use roundrobin::RoundRobinFactory;
 
 /// Scheduling algorithm interface.
 pub trait RouterStrategy: Send {
