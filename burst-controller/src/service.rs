@@ -33,6 +33,21 @@ impl ControllerInner {
             let worker_id = decision.worker_id.clone();
             let job_type = job_type_label(decision.job.spec.r#type.as_ref());
 
+            let Some(worker) = self.scheduling.workers.get_mut(&worker_id) else {
+                tracing::warn!(worker_id, "scheduler selected unknown worker");
+                continue;
+            };
+
+            if worker.processing_slots >= worker.max_slots {
+                tracing::warn!(
+                    worker_id,
+                    "scheduler selected worker without available slots"
+                );
+                continue;
+            }
+
+            worker.processing_slots += 1;
+
             self.job_states.insert(job_id.clone(), "leased".to_string());
             self.worker_queues
                 .entry(worker_id.clone())
@@ -188,8 +203,8 @@ impl ControllerRpc for ControllerService {
         inner.scheduling.workers.insert(
             req.worker_id.clone(),
             WorkerState {
-                id: req.worker_id.clone(),
-                available_slots: slots,
+                max_slots: slots,
+                processing_slots: 0,
             },
         );
         inner.worker_queues.entry(req.worker_id).or_default();
@@ -272,8 +287,13 @@ impl ControllerRpc for ControllerService {
         }
 
         if let Some(worker) = inner.scheduling.workers.get_mut(&req.worker_id) {
-            worker.available_slots += 1;
-            tracing::debug!(worker_id = %req.worker_id, available_slots = worker.available_slots, "worker slot released");
+            worker.processing_slots = worker.processing_slots.saturating_sub(1);
+            tracing::debug!(
+                worker_id = %req.worker_id,
+                max_slots = worker.max_slots,
+                processing_slots = worker.processing_slots,
+                "worker slot released"
+            );
         }
         inner.schedule_pending();
 

@@ -12,7 +12,7 @@ impl RoundRobinRouter {
         let mut available_workers = context
             .workers
             .iter()
-            .filter(|(_, worker)| worker.available_slots > 0)
+            .filter(|(_, worker)| worker.processing_slots < worker.max_slots)
             .map(|(worker_id, _)| worker_id.clone())
             .collect::<Vec<_>>();
 
@@ -43,10 +43,6 @@ impl RouterStrategy for RoundRobinRouter {
 
         let worker_id = self.choose_worker(context)?;
         let job = context.pending_jobs.pop_front()?;
-
-        if let Some(worker) = context.workers.get_mut(&worker_id) {
-            worker.available_slots -= 1;
-        }
 
         Some(RoutingDecision { worker_id, job })
     }
@@ -109,8 +105,8 @@ mod tests {
             workers: HashMap::from([(
                 "worker-1".to_string(),
                 WorkerState {
-                    id: "worker-1".to_string(),
-                    available_slots: 1,
+                    max_slots: 1,
+                    processing_slots: 0,
                 },
             )]),
         };
@@ -122,8 +118,8 @@ mod tests {
             context
                 .workers
                 .get("worker-1")
-                .map(|worker| worker.available_slots),
-            Some(1)
+                .map(|worker| worker.processing_slots),
+            Some(0)
         );
     }
 
@@ -136,15 +132,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        id: "worker-a".to_string(),
-                        available_slots: 1,
+                        max_slots: 1,
+                        processing_slots: 0,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        id: "worker-b".to_string(),
-                        available_slots: 1,
+                        max_slots: 1,
+                        processing_slots: 0,
                     },
                 ),
             ]),
@@ -172,15 +168,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        id: "worker-a".to_string(),
-                        available_slots: 0,
+                        max_slots: 1,
+                        processing_slots: 1,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        id: "worker-b".to_string(),
-                        available_slots: 1,
+                        max_slots: 1,
+                        processing_slots: 0,
                     },
                 ),
             ]),
