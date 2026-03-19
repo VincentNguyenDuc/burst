@@ -1,18 +1,15 @@
-use crate::domain::SchedulingDecision;
+use crate::domain::RoutingDecision;
 
-use super::SchedulerStrategy;
+use super::RouterStrategy;
 
-pub struct FifoScheduler;
+pub struct FifoRouter;
 
-impl SchedulerStrategy for FifoScheduler {
+impl RouterStrategy for FifoRouter {
     fn name(&self) -> &'static str {
         "fifo"
     }
 
-    fn next(
-        &mut self,
-        context: &mut crate::domain::SchedulingContext,
-    ) -> Option<SchedulingDecision> {
+    fn next(&mut self, context: &mut crate::domain::RoutingContext) -> Option<RoutingDecision> {
         let worker_id = context
             .workers
             .iter()
@@ -24,19 +21,19 @@ impl SchedulerStrategy for FifoScheduler {
             worker.available_slots -= 1;
         }
 
-        Some(SchedulingDecision { worker_id, job })
+        Some(RoutingDecision { worker_id, job })
     }
 }
 
 pub struct FifoFactory;
 
-impl super::SchedulerFactory for FifoFactory {
+impl super::RouterFactory for FifoFactory {
     fn name(&self) -> &'static str {
         "fifo"
     }
 
-    fn build(&self) -> Box<dyn super::SchedulerStrategy> {
-        Box::new(FifoScheduler)
+    fn build(&self) -> Box<dyn super::RouterStrategy> {
+        Box::new(FifoRouter)
     }
 }
 
@@ -46,14 +43,14 @@ mod tests {
 
     use burst_core::proto::{JobSpec, ProcessSpec, job_spec::Type::Process};
 
-    use crate::domain::{Job, SchedulingContext, WorkerState};
+    use crate::domain::{Job, RoutingContext, WorkerState};
 
-    use super::{FifoScheduler, SchedulerStrategy};
+    use super::{FifoRouter, RouterStrategy};
 
     #[test]
     fn returns_none_without_workers() {
-        let mut scheduler = FifoScheduler;
-        let mut context = SchedulingContext {
+        let mut scheduler = FifoRouter;
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::from([Job {
                 id: "job-1".to_string(),
                 spec: JobSpec {
@@ -75,8 +72,8 @@ mod tests {
 
     #[test]
     fn returns_none_without_jobs() {
-        let mut scheduler = FifoScheduler;
-        let mut context = SchedulingContext {
+        let mut scheduler = FifoRouter;
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::new(),
             workers: HashMap::from([(
                 "worker-1".to_string(),
@@ -101,8 +98,8 @@ mod tests {
 
     #[test]
     fn assigns_first_job_and_decrements_slot() {
-        let mut scheduler = FifoScheduler;
-        let mut context = SchedulingContext {
+        let mut scheduler = FifoRouter;
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::from([
                 Job {
                     id: "job-1".to_string(),

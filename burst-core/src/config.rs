@@ -35,14 +35,14 @@ impl BurstConfig {
 #[serde(default)]
 pub struct ControllerConfig {
     pub bind_addr: String,
-    pub scheduler: String,
+    pub router: String,
 }
 
 impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             bind_addr: "127.0.0.1:50051".to_string(),
-            scheduler: "fifo".to_string(),
+            router: "fifo".to_string(),
         }
     }
 }
@@ -108,7 +108,7 @@ mod tests {
         let config = BurstConfig::load_from_path(&path).expect("config should parse");
         let _ = fs::remove_file(&path);
 
-        assert_eq!(config.controller.scheduler, "fifo");
+        assert_eq!(config.controller.router, "fifo");
         assert_eq!(config.workers.len(), 1);
         assert_eq!(config.workers[0].worker_id, "worker-1");
         assert_eq!(config.cli.controller_addr, "http://127.0.0.1:50051");
@@ -120,7 +120,7 @@ mod tests {
         fs::write(
             &path,
             r#"{
-  "controller": { "bind_addr": "127.0.0.1:7000", "scheduler": "fifo" },
+  "controller": { "bind_addr": "127.0.0.1:7000", "router": "fifo" },
   "workers": [
     {
       "worker_id": "worker-x",

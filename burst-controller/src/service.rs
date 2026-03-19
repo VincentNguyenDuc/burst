@@ -13,14 +13,14 @@ use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    domain::{Job, SchedulingContext, WorkerState},
-    scheduler,
+    domain::{Job, RoutingContext, WorkerState},
+    router,
 };
 
 struct ControllerInner {
     next_job_id: u64,
-    scheduler: Box<dyn scheduler::SchedulerStrategy>,
-    scheduling: SchedulingContext,
+    scheduler: Box<dyn router::RouterStrategy>,
+    scheduling: RoutingContext,
     job_states: HashMap<String, String>,
     worker_queues: HashMap<String, VecDeque<Job>>,
 }
@@ -55,12 +55,12 @@ pub struct ControllerService {
 }
 
 impl ControllerService {
-    pub fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
+    pub fn new(scheduler: Box<dyn router::RouterStrategy>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ControllerInner {
                 next_job_id: 0,
                 scheduler,
-                scheduling: SchedulingContext {
+                scheduling: RoutingContext {
                     pending_jobs: VecDeque::new(),
                     workers: HashMap::new(),
                 },
@@ -287,7 +287,7 @@ mod tests {
     };
     use tonic::Request;
 
-    use crate::scheduler::{FifoFactory, SchedulerFactory};
+    use crate::router::{FifoFactory, RouterFactory};
 
     use super::ControllerService;
 

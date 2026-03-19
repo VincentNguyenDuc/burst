@@ -1,13 +1,13 @@
-use crate::domain::SchedulingDecision;
+use crate::domain::RoutingDecision;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-use super::SchedulerStrategy;
+use super::RouterStrategy;
 
 pub struct PowerOfTwoScheduler;
 
 impl PowerOfTwoScheduler {
-    fn choose_worker(&mut self, context: &crate::domain::SchedulingContext) -> Option<String> {
+    fn choose_worker(&mut self, context: &crate::domain::RoutingContext) -> Option<String> {
         let mut available_workers = context
             .workers
             .iter()
@@ -41,15 +41,12 @@ impl PowerOfTwoScheduler {
     }
 }
 
-impl SchedulerStrategy for PowerOfTwoScheduler {
+impl RouterStrategy for PowerOfTwoScheduler {
     fn name(&self) -> &'static str {
         "power2"
     }
 
-    fn next(
-        &mut self,
-        context: &mut crate::domain::SchedulingContext,
-    ) -> Option<SchedulingDecision> {
+    fn next(&mut self, context: &mut crate::domain::RoutingContext) -> Option<RoutingDecision> {
         if context.pending_jobs.is_empty() {
             return None;
         }
@@ -61,18 +58,18 @@ impl SchedulerStrategy for PowerOfTwoScheduler {
             worker.available_slots -= 1;
         }
 
-        Some(SchedulingDecision { worker_id, job })
+        Some(RoutingDecision { worker_id, job })
     }
 }
 
 pub struct PowerOfTwoFactory;
 
-impl super::SchedulerFactory for PowerOfTwoFactory {
+impl super::RouterFactory for PowerOfTwoFactory {
     fn name(&self) -> &'static str {
         "power2"
     }
 
-    fn build(&self) -> Box<dyn super::SchedulerStrategy> {
+    fn build(&self) -> Box<dyn super::RouterStrategy> {
         Box::new(PowerOfTwoScheduler)
     }
 }
@@ -83,9 +80,9 @@ mod tests {
 
     use burst_core::proto::{JobSpec, ProcessSpec, job_spec::Type::Process};
 
-    use crate::domain::{Job, SchedulingContext, WorkerState};
+    use crate::domain::{Job, RoutingContext, WorkerState};
 
-    use super::{PowerOfTwoScheduler, SchedulerStrategy};
+    use super::{PowerOfTwoScheduler, RouterStrategy};
 
     fn job(id: &str) -> Job {
         Job {
@@ -103,7 +100,7 @@ mod tests {
     #[test]
     fn returns_none_without_jobs() {
         let mut scheduler = PowerOfTwoScheduler;
-        let mut context = SchedulingContext {
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::new(),
             workers: HashMap::from([(
                 "worker-a".to_string(),
@@ -122,7 +119,7 @@ mod tests {
     #[test]
     fn returns_none_without_available_workers() {
         let mut scheduler = PowerOfTwoScheduler;
-        let mut context = SchedulingContext {
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::from([job("job-1")]),
             workers: HashMap::from([(
                 "worker-a".to_string(),
@@ -142,7 +139,7 @@ mod tests {
     #[test]
     fn chooses_higher_capacity_between_two_candidates() {
         let mut scheduler = PowerOfTwoScheduler;
-        let mut context = SchedulingContext {
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::from([job("job-1")]),
             workers: HashMap::from([
                 (
@@ -180,7 +177,7 @@ mod tests {
     #[test]
     fn single_available_worker_is_selected() {
         let mut scheduler = PowerOfTwoScheduler;
-        let mut context = SchedulingContext {
+        let mut context = RoutingContext {
             pending_jobs: VecDeque::from([job("job-1")]),
             workers: HashMap::from([
                 (

@@ -12,7 +12,7 @@
 //! - `--config <path>` (default `burst.config.json`)
 
 mod domain;
-mod scheduler;
+mod router;
 mod service;
 
 use std::io::IsTerminal;
@@ -20,7 +20,7 @@ use std::net::SocketAddr;
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::controller_rpc_server::ControllerRpcServer;
-use scheduler::{FifoFactory, PowerOfTwoFactory, SchedulerRegistry};
+use router::{FifoFactory, PowerOfTwoFactory, RouterRegistry};
 use tonic::transport::Server;
 use tracing_subscriber::EnvFilter;
 
@@ -57,11 +57,11 @@ async fn main() {
 
     let bind_addr = config.controller.bind_addr.clone();
 
-    let mut registry = SchedulerRegistry::new();
+    let mut registry = RouterRegistry::new();
     registry.register(FifoFactory);
     registry.register(PowerOfTwoFactory);
 
-    let strategy_name = config.controller.scheduler.clone();
+    let strategy_name = config.controller.router.clone();
     let available = registry.available();
     let scheduler = registry.build(&strategy_name);
 
