@@ -1,4 +1,4 @@
-.PHONY: build up down logs bench docs
+.PHONY: build up down logs bench test docs
 
 DOCKER_COMPOSE ?= docker compose
 WORKER_SERVICES ?= worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8
@@ -24,6 +24,14 @@ bench:
 	$(DOCKER_COMPOSE) run --rm bench; \
 	trap - EXIT; \
 	$(MAKE) down
+
+test:
+	$(DOCKER_COMPOSE) build test
+	$(DOCKER_COMPOSE) run --rm test
+
+format:
+	cargo fmt --all --check
+	black .
 
 docs:
 	cargo doc --workspace --no-deps --quiet

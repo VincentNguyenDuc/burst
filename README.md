@@ -82,31 +82,37 @@ Use Docker Compose to avoid host environment differences between macOS and Linux
 Build runtime images:
 
 ```bash
-make docker-build
+make build
 ```
 
 Start controller + workers in containers:
 
 ```bash
-make docker-up
+make up
 ```
 
 Run throughput benchmark in containerized environment:
 
 ```bash
-make docker-bench
+make bench
+```
+
+Run tests in Docker:
+
+```bash
+make test
 ```
 
 Stop containers:
 
 ```bash
-make docker-down
+make down
 ```
 
 Tail cluster logs:
 
 ```bash
-make docker-logs
+make logs
 ```
 
 ### Throughput benchmark (`jobs/s`)
@@ -116,12 +122,12 @@ The repository includes a Python benchmark runner that submits many process jobs
 Run throughput benchmark in Docker:
 
 ```bash
-make docker-bench
+make bench
 ```
 
 Notes:
 
-- `docker-bench` uses the benchmark command and parameters defined in `docker-compose.yml`.
+- `make bench` uses the benchmark command and parameters defined in `docker-compose.yml`.
 - Runtime command path differences are handled inside the container.
 
 Output includes:
@@ -132,7 +138,7 @@ Output includes:
 Stop benchmark cluster (if still running):
 
 ```bash
-make docker-down
+make down
 ```
 
 ## Tracing logs

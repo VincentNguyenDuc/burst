@@ -1,4 +1,12 @@
 services:
+    test:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: builder
+        image: burst-builder:dev
+        command: ["cargo", "test", "--workspace"]
+
     controller:
         build:
             context: .
