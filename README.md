@@ -159,6 +159,24 @@ RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
 RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
 ```
 
+## Tracing logs
+
+Controller and worker emit structured lifecycle logs for:
+
+- job submit validation and queueing
+- scheduler lease decisions (`job_id`, `worker_id`, `job_type`)
+- worker poll assignment and execution start/finish
+- result reporting and state transitions
+
+Default log level is `info`. Override with `RUST_LOG`.
+
+Examples:
+
+```bash
+RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
+RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
+```
+
 ## Build and docs
 
 Workspace check:
