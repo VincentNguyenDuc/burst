@@ -1,66 +1,40 @@
-.PHONY: controller submit status cluster-up cluster-down cluster-status docs docs-rust docs-rust-private docs-proto clean
+.PHONY: build up down logs bench test docs
 
-CMD ?= /bin/echo hello-from-burst
-ARGV ?=
-JOB_ID ?=
+DOCKER_COMPOSE ?= docker compose
+WORKER_SERVICES ?= worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8
+DOCKER_CLUSTER_SERVICES ?= controller $(WORKER_SERVICES)
 
-BURST_STATE_DIR ?= .burst-dev
-CONFIG_PATH ?= burst-example.config.json
-OUTPUT_DIR ?= ./.burst-dev/job-outputs
+build:
+	$(DOCKER_COMPOSE) build
 
-OUTPUT_DIR_ARG = $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
-SUBMIT_TOKENS = $(if $(ARGV),$(ARGV),$(CMD))
-CONTROLLER_BIND = $(shell jq -r '.controller.bind_addr' "$(CONFIG_PATH)")
-WORKER_IDS = $(shell jq -r '.workers[].worker_id' "$(CONFIG_PATH)")
+up:
+	$(DOCKER_COMPOSE) up -d $(DOCKER_CLUSTER_SERVICES)
 
-controller:
-	cargo run -p burst-controller -- --config "$(CONFIG_PATH)"
+down:
+	$(DOCKER_COMPOSE) down --remove-orphans
 
-submit:
-	cargo run -p burst-cli -- --config "$(CONFIG_PATH)" submit $(OUTPUT_DIR_ARG) $(SUBMIT_TOKENS)
+logs:
+	$(DOCKER_COMPOSE) logs -f --tail=200 $(DOCKER_CLUSTER_SERVICES)
 
-status:
-	cargo run -p burst-cli -- --config "$(CONFIG_PATH)" status --job-id "$(JOB_ID)"
+bench:
+	@set -e; \
+	$(MAKE) build; \
+	$(MAKE) up; \
+	trap '$(MAKE) down' EXIT; \
+	$(DOCKER_COMPOSE) run --rm bench; \
+	trap - EXIT; \
+	$(MAKE) down
 
-cluster-up:
-	mkdir -p "$(BURST_STATE_DIR)"
-	echo "Starting controller on $(CONTROLLER_BIND)"
-	nohup cargo run -p burst-controller -- --config "$(CONFIG_PATH)" >"$(BURST_STATE_DIR)/controller.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/controller.pid"
-	sleep 1
-	for wid in $(WORKER_IDS); do \
-		echo "Starting $$wid"; \
-		nohup cargo run -p burst-worker -- --config "$(CONFIG_PATH)" --worker-id "$$wid" >"$(BURST_STATE_DIR)/$$wid.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/$$wid.pid"; \
-	done
-	echo "Cluster started."
+test:
+	$(DOCKER_COMPOSE) build test
+	$(DOCKER_COMPOSE) run --rm test
 
-cluster-status:
-	@state="$(BURST_STATE_DIR)"; \
-	echo "Controller:"; \
-	cat "$$state/controller.pid" 2>/dev/null || echo "no pid"; \
-	echo "Workers:"; \
-	ls -1 "$$state"/*.pid 2>/dev/null | xargs -I {} basename {} .pid | grep -v controller || echo "none"
+format:
+	cargo fmt --all --check
+	black .
 
-cluster-down:
-	@state="$(BURST_STATE_DIR)"; \
-	echo "Stopping cluster processes..."; \
-	for pidf in "$$state"/*.pid; do \
-		[ -e "$$pidf" ] || continue; \
-		pid=$$(cat "$$pidf"); \
-		kill "$$pid" 2>/dev/null || true; \
-		rm -f "$$pidf"; \
-	done; \
-	echo "Cluster stopped."
-
-clean:
-	rm -rf "$(BURST_STATE_DIR)"
-	cargo clean
-
-docs: docs-rust docs-proto
-
-docs-rust:
+docs:
 	cargo doc --workspace --no-deps --quiet
-
-docs-proto:
 	mkdir -p docs/proto
 	protoc \
 		-I burst-core/proto \

@@ -14,20 +14,20 @@ pub struct Job {
 /// Worker runtime capacity tracked by controller.
 #[derive(Debug, Clone)]
 pub struct WorkerState {
-    pub id: String,
-    pub available_slots: u32,
+    pub max_slots: u32,
+    pub processing_slots: u32,
 }
 
-/// Mutable scheduling snapshot consumed by scheduler strategies.
+/// Mutable routing snapshot consumed by router strategies.
 #[derive(Debug, Default)]
-pub struct SchedulingContext {
+pub struct RoutingContext {
     pub pending_jobs: VecDeque<Job>,
     pub workers: HashMap<String, WorkerState>,
 }
 
-/// Decision returned by scheduler to lease one job to one worker.
+/// Decision returned by router to lease one job to one worker.
 #[derive(Debug, Clone)]
-pub struct SchedulingDecision {
+pub struct RoutingDecision {
     pub worker_id: String,
     pub job: Job,
 }

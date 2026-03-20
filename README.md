@@ -8,7 +8,7 @@ Current POC scope:
 - N worker processes
 - 1 CLI client session
 - gRPC communication between all components
-- In-memory FIFO scheduling
+- In-memory round-robin scheduling
 
 Configuration is centralized in `burst.config.json` at the repository root.
 
@@ -18,6 +18,7 @@ Configuration is centralized in `burst.config.json` at the repository root.
 - `burst-controller`: scheduler + controller gRPC server
 - `burst-worker`: worker runtime that polls, executes, and reports
 - `burst-cli`: client for job submit and status
+- `scripts/bench_throughput.py`: throughput benchmark runner using `burst-cli`
 
 ## Architecture
 
@@ -36,7 +37,7 @@ Workers register with `worker_id` and `slots`, then repeatedly poll for work.
 
 Scheduling is pluggable through a strategy trait and registry in the controller.
 
-- default strategy: FIFO
+- default strategy: roundrobin
 - strategy selected by `controller.scheduler` in `burst.config.json`
 
 ## Shared configuration
@@ -45,7 +46,7 @@ All components load the same JSON file (`burst.config.json`) so runtime settings
 
 Top-level sections:
 
-- `controller`: bind address and scheduler strategy
+- `controller`: bind address, scheduler strategy, and submission buffer capacity
 - `worker`: controller address, default slots, poll/retry timing
 - `cli`: controller address used by submit/status commands
 - `cluster`: local test-cluster worker count and worker slots for Makefile automation
@@ -74,76 +75,70 @@ Proto file: `burst-core/proto/burst/v1/control.proto`
 
 ## Running locally
 
-### Using Makefile cluster targets
+### Recommended: Docker Compose (cross-platform)
 
-Start controller + many workers:
+Use Docker Compose to avoid host environment differences between macOS and Linux.
+
+Build runtime images:
 
 ```bash
-make cluster-up
+make build
 ```
 
-By default this reads `cluster.num_workers` and `cluster.worker_slots` from `burst.config.json`.
-
-Submit a job:
+Start controller + workers in containers:
 
 ```bash
-make submit CMD="/bin/echo hello-from-burst"
+make up
 ```
 
-Check status:
+Run throughput benchmark in containerized environment:
 
 ```bash
-make status JOB_ID=job-00000001
+make bench
 ```
 
-Inspect cluster process status:
+Run tests in Docker:
 
 ```bash
-make cluster-status
+make test
 ```
 
-Stop all cluster processes:
+Stop containers:
 
 ```bash
-make cluster-down
+make down
 ```
 
-### Manual run
-
-Controller:
+Tail cluster logs:
 
 ```bash
-cargo run -p burst-controller -- --config burst.config.json
+make logs
 ```
 
-Worker:
+### Throughput benchmark (`jobs/s`)
+
+The repository includes a Python benchmark runner that submits many process jobs and waits for terminal state (`succeeded` / `failed`) before computing throughput.
+
+Run throughput benchmark in Docker:
 
 ```bash
-cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1 --slots 1
+make bench
 ```
 
-CLI submit process job:
+Notes:
+
+- `make bench` uses the benchmark command and parameters defined in `docker-compose.yml`.
+- Runtime command path differences are handled inside the container.
+
+Output includes:
+
+- `submit_throughput_jobs_per_sec` (acceptance rate)
+- `throughput_jobs_per_sec` (end-to-end completion rate)
+
+Stop benchmark cluster (if still running):
 
 ```bash
-cargo run -p burst-cli -- --config burst.config.json submit process /bin/echo hello
-```
-
-CLI submit python job:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json submit python -c "print('hello from python')"
-```
-
-CLI submit docker job:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json submit docker alpine:3.20 echo hello
-```
-
-CLI status:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json status --job-id job-00000001
+make down
 ```
 
 ## Tracing logs

@@ -13,14 +13,15 @@ use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    domain::{Job, SchedulingContext, WorkerState},
-    scheduler,
+    domain::{Job, RoutingContext, WorkerState},
+    router,
 };
 
 struct ControllerInner {
     next_job_id: u64,
-    scheduler: Box<dyn scheduler::SchedulerStrategy>,
-    scheduling: SchedulingContext,
+    scheduler: Box<dyn router::RouterStrategy>,
+    submission_buffer_capacity: usize,
+    scheduling: RoutingContext,
     job_states: HashMap<String, String>,
     worker_queues: HashMap<String, VecDeque<Job>>,
 }
@@ -31,6 +32,21 @@ impl ControllerInner {
             let job_id = decision.job.id.clone();
             let worker_id = decision.worker_id.clone();
             let job_type = job_type_label(decision.job.spec.r#type.as_ref());
+
+            let Some(worker) = self.scheduling.workers.get_mut(&worker_id) else {
+                tracing::warn!(worker_id, "scheduler selected unknown worker");
+                continue;
+            };
+
+            if worker.processing_slots >= worker.max_slots {
+                tracing::warn!(
+                    worker_id,
+                    "scheduler selected worker without available slots"
+                );
+                continue;
+            }
+
+            worker.processing_slots += 1;
 
             self.job_states.insert(job_id.clone(), "leased".to_string());
             self.worker_queues
@@ -55,12 +71,16 @@ pub struct ControllerService {
 }
 
 impl ControllerService {
-    pub fn new(scheduler: Box<dyn scheduler::SchedulerStrategy>) -> Self {
+    pub fn new(
+        scheduler: Box<dyn router::RouterStrategy>,
+        submission_buffer_capacity: usize,
+    ) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ControllerInner {
                 next_job_id: 0,
                 scheduler,
-                scheduling: SchedulingContext {
+                submission_buffer_capacity: submission_buffer_capacity.max(1),
+                scheduling: RoutingContext {
                     pending_jobs: VecDeque::new(),
                     workers: HashMap::new(),
                 },
@@ -120,6 +140,17 @@ impl ControllerRpc for ControllerService {
         }
 
         let mut inner = self.inner.lock().await;
+        if inner.scheduling.pending_jobs.len() >= inner.submission_buffer_capacity {
+            tracing::warn!(
+                pending_jobs = inner.scheduling.pending_jobs.len(),
+                submission_buffer_capacity = inner.submission_buffer_capacity,
+                "submit rejected: controller submission buffer full"
+            );
+            return Err(Status::resource_exhausted(
+                "controller submission buffer is full",
+            ));
+        }
+
         inner.next_job_id += 1;
         let job_id = format!("job-{:08}", inner.next_job_id);
 
@@ -172,8 +203,8 @@ impl ControllerRpc for ControllerService {
         inner.scheduling.workers.insert(
             req.worker_id.clone(),
             WorkerState {
-                id: req.worker_id.clone(),
-                available_slots: slots,
+                max_slots: slots,
+                processing_slots: 0,
             },
         );
         inner.worker_queues.entry(req.worker_id).or_default();
@@ -256,8 +287,13 @@ impl ControllerRpc for ControllerService {
         }
 
         if let Some(worker) = inner.scheduling.workers.get_mut(&req.worker_id) {
-            worker.available_slots += 1;
-            tracing::debug!(worker_id = %req.worker_id, available_slots = worker.available_slots, "worker slot released");
+            worker.processing_slots = worker.processing_slots.saturating_sub(1);
+            tracing::debug!(
+                worker_id = %req.worker_id,
+                max_slots = worker.max_slots,
+                processing_slots = worker.processing_slots,
+                "worker slot released"
+            );
         }
         inner.schedule_pending();
 
@@ -287,12 +323,17 @@ mod tests {
     };
     use tonic::Request;
 
-    use crate::scheduler::{FifoFactory, SchedulerFactory};
+    use crate::router::{RoundRobinFactory, RouterFactory};
 
     use super::ControllerService;
 
+    const TEST_DEFAULT_SUBMISSION_BUFFER_CAPACITY: usize = 32;
+
     fn service() -> ControllerService {
-        ControllerService::new(FifoFactory.build())
+        ControllerService::new(
+            RoundRobinFactory.build(),
+            TEST_DEFAULT_SUBMISSION_BUFFER_CAPACITY,
+        )
     }
 
     #[tokio::test]
@@ -453,5 +494,112 @@ mod tests {
             }
             _ => panic!("expected python job type"),
         }
+    }
+
+    #[tokio::test]
+    async fn submit_rejects_when_submission_buffer_is_full() {
+        let service = ControllerService::new(RoundRobinFactory.build(), 2);
+
+        for _ in 0..2 {
+            service
+                .submit_job(Request::new(SubmitJobRequest {
+                    spec: Some(JobSpec {
+                        output_dir: None,
+                        r#type: Some(Process(ProcessSpec {
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
+                        })),
+                        ..Default::default()
+                    }),
+                }))
+                .await
+                .expect("submit should succeed while buffer has space");
+        }
+
+        let error = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["overflow".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect_err("submit should fail when buffer is full");
+
+        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[tokio::test]
+    async fn submit_accepts_again_after_pending_job_is_leased() {
+        let service = ControllerService::new(RoundRobinFactory.build(), 1);
+
+        service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["first".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect("first submit should succeed");
+
+        let full_error = service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["overflow".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect_err("submit should fail while buffer is full");
+
+        assert_eq!(full_error.code(), tonic::Code::ResourceExhausted);
+
+        service
+            .register_worker(Request::new(RegisterWorkerRequest {
+                worker_id: "worker-1".to_string(),
+                slots: 1,
+            }))
+            .await
+            .expect("worker registration should succeed");
+
+        let poll = service
+            .poll_job(Request::new(PollJobRequest {
+                worker_id: "worker-1".to_string(),
+            }))
+            .await
+            .expect("poll should succeed")
+            .into_inner();
+
+        assert!(matches!(
+            poll.result,
+            Some(poll_job_response::Result::Job(_))
+        ));
+
+        service
+            .submit_job(Request::new(SubmitJobRequest {
+                spec: Some(JobSpec {
+                    output_dir: None,
+                    r#type: Some(Process(ProcessSpec {
+                        command: "echo".to_string(),
+                        args: vec!["after-drain".to_string()],
+                    })),
+                    ..Default::default()
+                }),
+            }))
+            .await
+            .expect("submit should succeed once buffer drains");
     }
 }

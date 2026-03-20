@@ -1,0 +1,8 @@
+.git
+.gitignore
+target
+**/target
+.burst-dev
+.vscode
+.venv
+*.log
