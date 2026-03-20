@@ -151,3 +151,85 @@ services:
             - "/usr/bin/true"
             - "--cli-bin"
             - "/usr/local/bin/burst-cli"
+
+    controller-steal:
+        profiles: ["steal-test"]
+        image: burst-runtime:dev
+        hostname: controller-steal
+        command:
+            [
+                "/usr/local/bin/burst-controller",
+                "--config",
+                "/app/burst-config/burst-steal-test.config.json",
+            ]
+
+    steal-worker-1:
+        profiles: ["steal-test"]
+        image: burst-runtime:dev
+        hostname: steal-worker-1
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-steal-test.config.json",
+                "--worker-id",
+                "worker-1",
+            ]
+        depends_on:
+            - controller-steal
+        volumes:
+            - steal-output:/tmp/burst-steal-out
+
+    steal-worker-2:
+        profiles: ["steal-test"]
+        image: burst-runtime:dev
+        hostname: steal-worker-2
+        command:
+            [
+                "/bin/sh",
+                "-c",
+                "sleep 5 && /usr/local/bin/burst-worker --config /app/burst-config/burst-steal-test.config.json --worker-id worker-2",
+            ]
+        depends_on:
+            - controller-steal
+        volumes:
+            - steal-output:/tmp/burst-steal-out
+
+    steal-worker-3:
+        profiles: ["steal-test"]
+        image: burst-runtime:dev
+        hostname: steal-worker-3
+        command:
+            [
+                "/bin/sh",
+                "-c",
+                "sleep 5 && /usr/local/bin/burst-worker --config /app/burst-config/burst-steal-test.config.json --worker-id worker-3",
+            ]
+        depends_on:
+            - controller-steal
+        volumes:
+            - steal-output:/tmp/burst-steal-out
+
+    steal-test:
+        profiles: ["steal-test"]
+        image: burst-runtime:dev
+        depends_on:
+            - controller-steal
+            - steal-worker-1
+            - steal-worker-2
+            - steal-worker-3
+        entrypoint: ["python3", "/app/scripts/test_work_stealing.py"]
+        command:
+            - "--config"
+            - "/app/burst-config/burst-steal-test.config.json"
+            - "--cli-bin"
+            - "/usr/local/bin/burst-cli"
+            - "--output-dir"
+            - "/tmp/burst-steal-out"
+            - "--expected-busy-worker"
+            - "steal-worker-1"
+        volumes:
+            - steal-output:/tmp/burst-steal-out
+
+volumes:
+    steal-output:

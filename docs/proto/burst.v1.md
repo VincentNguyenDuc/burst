@@ -28,6 +28,12 @@
     - [RegisterWorkerRequest](#burst-v1-RegisterWorkerRequest)
     - [RegisterWorkerResponse](#burst-v1-RegisterWorkerResponse)
   
+- [burst/v1/peer.proto](#burst_v1_peer-proto)
+    - [StealJobsRequest](#burst-v1-StealJobsRequest)
+    - [StealJobsResponse](#burst-v1-StealJobsResponse)
+  
+    - [WorkerPeerRpc](#burst-v1-WorkerPeerRpc)
+  
 - [Scalar Value Types](#scalar-value-types)
 
 
@@ -369,6 +375,63 @@ RegisterWorkerResponse indicates whether registration succeeded.
  
 
  
+
+ 
+
+
+
+<a name="burst_v1_peer-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## burst/v1/peer.proto
+
+
+
+<a name="burst-v1-StealJobsRequest"></a>
+
+### StealJobsRequest
+StealJobsRequest identifies the thief and requested steal size.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| thief_worker_id | [string](#string) |  |  |
+| max_jobs | [uint32](#uint32) |  |  |
+
+
+
+
+
+
+<a name="burst-v1-StealJobsResponse"></a>
+
+### StealJobsResponse
+StealJobsResponse returns zero or more stolen jobs.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobs | [AssignedJob](#burst-v1-AssignedJob) | repeated |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="burst-v1-WorkerPeerRpc"></a>
+
+### WorkerPeerRpc
+WorkerPeerRpc defines peer-to-peer work-stealing APIs between workers.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| StealJobs | [StealJobsRequest](#burst-v1-StealJobsRequest) | [StealJobsResponse](#burst-v1-StealJobsResponse) | StealJobs asks a peer worker for a bounded number of queued jobs. |
 
  
 

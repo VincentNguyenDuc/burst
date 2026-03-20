@@ -32,6 +32,7 @@ The controller owns in-memory state:
 - job status map
 
 Workers register with `worker_id` and `slots`, then repeatedly poll for work.
+Workers also expose a peer RPC endpoint and steal queued jobs from other workers while idle.
 
 ### Scheduling
 
@@ -47,7 +48,7 @@ All components load the same JSON file (`burst.config.json`) so runtime settings
 Top-level sections:
 
 - `controller`: bind address, scheduler strategy, and submission buffer capacity
-- `worker`: controller address, default slots, poll/retry timing
+- `worker`: controller address, default slots, poll/retry timing, and optional peer stealing settings
 - `cli`: controller address used by submit/status commands
 - `cluster`: local test-cluster worker count and worker slots for Makefile automation
 
@@ -59,6 +60,8 @@ Top-level sections:
 4. Worker executes process with `tokio::process::Command`
 5. Worker reports exit result
 6. Controller marks job as `succeeded` or `failed`
+
+When peer stealing is enabled, an idle worker attempts `StealJobs` against peer workers before polling the controller again.
 
 ## RPC contract
 
@@ -72,6 +75,19 @@ Service: `ControllerRpc`
 - `Heartbeat`
 
 Proto file: `burst-core/proto/burst/v1/control.proto`
+
+Service: `WorkerPeerRpc`
+
+- `StealJobs`
+
+Proto file: `burst-core/proto/burst/v1/peer.proto`
+
+Worker stealing-related config fields:
+
+- `peer_listen_addr` (optional): worker bind address for serving peer steal requests
+- `peer_advertise_addr` (optional): address peers should dial (useful for Docker service DNS)
+- `steal_batch_size`: max jobs requested per peer steal attempt
+- `steal_interval_ms`: delay between peer steal attempts when idle
 
 ## Running locally
 
@@ -123,6 +139,12 @@ Run throughput benchmark in Docker:
 
 ```bash
 make bench
+```
+
+Run work-stealing integration test in Docker Compose (long/short skew with delayed peer workers):
+
+```bash
+make steal-test
 ```
 
 Notes:
@@ -243,4 +265,4 @@ Requirements for `make docs-proto`:
 - in-memory state only (no persistence)
 - no retries or requeue on worker loss yet
 - no authn/authz between components
-- worker polling model is simple unary RPC loop
+- lease/idempotency semantics are still minimal (no lease ids yet)

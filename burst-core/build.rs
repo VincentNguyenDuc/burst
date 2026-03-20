@@ -7,6 +7,7 @@ fn main() {
                 "proto/burst/v1/control.proto",
                 "proto/burst/v1/job.proto",
                 "proto/burst/v1/worker.proto",
+                "proto/burst/v1/peer.proto",
             ],
             &["proto"],
         )

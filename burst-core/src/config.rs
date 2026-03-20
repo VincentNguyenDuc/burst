@@ -56,6 +56,20 @@ pub struct WorkerConfig {
     pub slots: u32,
     pub poll_interval_ms: u64,
     pub retry_interval_ms: u64,
+    pub peer_listen_addr: Option<String>,
+    pub peer_advertise_addr: Option<String>,
+    #[serde(default = "default_steal_batch_size")]
+    pub steal_batch_size: u32,
+    #[serde(default = "default_steal_interval_ms")]
+    pub steal_interval_ms: u64,
+}
+
+fn default_steal_batch_size() -> u32 {
+    1
+}
+
+fn default_steal_interval_ms() -> u64 {
+    150
 }
 
 impl Default for WorkerConfig {
@@ -66,6 +80,10 @@ impl Default for WorkerConfig {
             slots: 1,
             poll_interval_ms: 250,
             retry_interval_ms: 500,
+            peer_listen_addr: None,
+            peer_advertise_addr: None,
+            steal_batch_size: default_steal_batch_size(),
+            steal_interval_ms: default_steal_interval_ms(),
         }
     }
 }

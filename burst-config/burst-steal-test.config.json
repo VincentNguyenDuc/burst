@@ -1,0 +1,45 @@
+{
+    "controller": {
+        "bind_addr": "0.0.0.0:50051",
+        "router": "roundrobin",
+        "submission_buffer_capacity": 128
+    },
+    "workers": [
+        {
+            "controller_addr": "http://controller-steal:50051",
+            "worker_id": "worker-1",
+            "slots": 1,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25,
+            "peer_listen_addr": "0.0.0.0:52051",
+            "peer_advertise_addr": "steal-worker-1:52051",
+            "steal_batch_size": 2,
+            "steal_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://controller-steal:50051",
+            "worker_id": "worker-2",
+            "slots": 1,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25,
+            "peer_listen_addr": "0.0.0.0:52052",
+            "peer_advertise_addr": "steal-worker-2:52052",
+            "steal_batch_size": 2,
+            "steal_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://controller-steal:50051",
+            "worker_id": "worker-3",
+            "slots": 1,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25,
+            "peer_listen_addr": "0.0.0.0:52053",
+            "peer_advertise_addr": "steal-worker-3:52053",
+            "steal_batch_size": 2,
+            "steal_interval_ms": 25
+        }
+    ],
+    "cli": {
+        "controller_addr": "http://controller-steal:50051"
+    }
+}
