@@ -1,0 +1,145 @@
+services:
+    controller:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-controller",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+            ]
+        ports:
+            - "50051:50051"
+
+    worker-1:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-1",
+            ]
+        depends_on:
+            - controller
+
+    worker-2:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-2",
+            ]
+        depends_on:
+            - controller
+
+    worker-3:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-3",
+            ]
+        depends_on:
+            - controller
+
+    worker-4:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-4",
+            ]
+        depends_on:
+            - controller
+
+    worker-5:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-5",
+            ]
+        depends_on:
+            - controller
+
+    worker-6:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-6",
+            ]
+        depends_on:
+            - controller
+
+    worker-7:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-7",
+            ]
+        depends_on:
+            - controller
+
+    worker-8:
+        image: burst-runtime:dev
+        command:
+            [
+                "/usr/local/bin/burst-worker",
+                "--config",
+                "/app/burst-config/burst-docker.config.json",
+                "--worker-id",
+                "worker-8",
+            ]
+        depends_on:
+            - controller
+
+    bench:
+        image: burst-runtime:dev
+        depends_on:
+            - controller
+            - worker-1
+            - worker-2
+            - worker-3
+            - worker-4
+            - worker-5
+            - worker-6
+            - worker-7
+            - worker-8
+        entrypoint: ["python3", "/app/scripts/bench_throughput.py"]
+        command:
+            - "--config"
+            - "/app/burst-config/burst-docker.config.json"
+            - "--jobs"
+            - "10000"
+            - "--submit-concurrency"
+            - "256"
+            - "--poll-interval-ms"
+            - "5"
+            - "--command"
+            - "/usr/bin/true"
+            - "--cli-bin"
+            - "/usr/local/bin/burst-cli"

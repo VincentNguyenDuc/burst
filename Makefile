@@ -1,121 +1,32 @@
-.PHONY: controller submit status build-release cluster-up cluster-up-release cluster-down cluster-status bench-throughput bench-release perf-controller flamegraph-controller docs docs-rust docs-rust-private docs-proto clean
+.PHONY: build up down logs bench docs
 
-CMD ?= /bin/echo hello-from-burst
-ARGV ?=
-JOB_ID ?=
+DOCKER_COMPOSE ?= docker compose
+WORKER_SERVICES ?= worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8
+DOCKER_CLUSTER_SERVICES ?= controller $(WORKER_SERVICES)
 
-BURST_STATE_DIR ?= .burst-dev
-CONFIG_PATH ?= burst-example.config.json
-OUTPUT_DIR ?= ./.burst-dev/job-outputs
-JOBS ?= 10000
-SUBMIT_CONCURRENCY ?= 256
-POLL_INTERVAL_MS ?= 5
-BENCH_CMD ?= /bin/true
-BENCH_ARGS ?=
-PROFILE_SECONDS ?= 30
-PROFILE_PID_FILE ?= $(BURST_STATE_DIR)/controller.pid
-FLAMEGRAPH_OUTPUT ?= controller-flamegraph.svg
-RELEASE_BIN_DIR ?= target/release
+build:
+	$(DOCKER_COMPOSE) build
 
-OUTPUT_DIR_ARG = $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
-SUBMIT_TOKENS = $(if $(ARGV),$(ARGV),$(CMD))
-CONTROLLER_BIND = $(shell jq -r '.controller.bind_addr' "$(CONFIG_PATH)")
-WORKER_IDS = $(shell jq -r '.workers[].worker_id' "$(CONFIG_PATH)")
+up:
+	$(DOCKER_COMPOSE) up -d $(DOCKER_CLUSTER_SERVICES)
 
-controller:
-	cargo run -p burst-controller -- --config "$(CONFIG_PATH)"
+down:
+	$(DOCKER_COMPOSE) down --remove-orphans
 
-submit:
-	cargo run -p burst-cli -- --config "$(CONFIG_PATH)" submit $(OUTPUT_DIR_ARG) $(SUBMIT_TOKENS)
+logs:
+	$(DOCKER_COMPOSE) logs -f --tail=200 $(DOCKER_CLUSTER_SERVICES)
 
-status:
-	cargo run -p burst-cli -- --config "$(CONFIG_PATH)" status --job-id "$(JOB_ID)"
-
-cluster-up:
-	mkdir -p "$(BURST_STATE_DIR)"
-	echo "Starting controller on $(CONTROLLER_BIND)"
-	nohup cargo run -p burst-controller -- --config "$(CONFIG_PATH)" >"$(BURST_STATE_DIR)/controller.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/controller.pid"
-	sleep 1
-	for wid in $(WORKER_IDS); do \
-		echo "Starting $$wid"; \
-		nohup cargo run -p burst-worker -- --config "$(CONFIG_PATH)" --worker-id "$$wid" >"$(BURST_STATE_DIR)/$$wid.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/$$wid.pid"; \
-	done
-	echo "Cluster started."
-
-build-release:
-	cargo build --workspace --release
-
-cluster-up-release:
-	mkdir -p "$(BURST_STATE_DIR)"
-	echo "Starting release controller on $(CONTROLLER_BIND)"
-	nohup "$(RELEASE_BIN_DIR)/burst-controller" --config "$(CONFIG_PATH)" >"$(BURST_STATE_DIR)/controller.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/controller.pid"
-	sleep 1
-	for wid in $(WORKER_IDS); do \
-		echo "Starting $$wid (release)"; \
-		nohup "$(RELEASE_BIN_DIR)/burst-worker" --config "$(CONFIG_PATH)" --worker-id "$$wid" >"$(BURST_STATE_DIR)/$$wid.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/$$wid.pid"; \
-	done
-	echo "Release cluster started."
-
-cluster-status:
-	@state="$(BURST_STATE_DIR)"; \
-	echo "Controller:"; \
-	cat "$$state/controller.pid" 2>/dev/null || echo "no pid"; \
-	echo "Workers:"; \
-	ls -1 "$$state"/*.pid 2>/dev/null | xargs -I {} basename {} .pid | grep -v controller || echo "none"
-
-cluster-down:
-	@state="$(BURST_STATE_DIR)"; \
-	echo "Stopping cluster processes..."; \
-	for pidf in "$$state"/*.pid; do \
-		[ -e "$$pidf" ] || continue; \
-		pid=$$(cat "$$pidf"); \
-		kill "$$pid" 2>/dev/null || true; \
-		rm -f "$$pidf"; \
-	done; \
-	echo "Cluster stopped."
-
-bench-throughput:
-	cargo build -p burst-cli --release
-	python3 scripts/bench_throughput.py \
-		--config "$(CONFIG_PATH)" \
-		--jobs "$(JOBS)" \
-		--submit-concurrency "$(SUBMIT_CONCURRENCY)" \
-		--poll-interval-ms "$(POLL_INTERVAL_MS)" \
-		--command "$(BENCH_CMD)" \
-		--cli-bin "target/release/burst-cli" \
-		$(foreach arg,$(BENCH_ARGS),--arg "$(arg)")
-
-bench-release:
+bench:
 	@set -e; \
-	$(MAKE) build-release; \
-	$(MAKE) cluster-up-release CONFIG_PATH="$(CONFIG_PATH)"; \
-	trap '$(MAKE) cluster-down' EXIT; \
-	$(MAKE) bench-throughput \
-		CONFIG_PATH="$(CONFIG_PATH)" \
-		JOBS="$(JOBS)" \
-		SUBMIT_CONCURRENCY="$(SUBMIT_CONCURRENCY)" \
-		POLL_INTERVAL_MS="$(POLL_INTERVAL_MS)" \
-		BENCH_CMD="$(BENCH_CMD)" \
-		BENCH_ARGS="$(BENCH_ARGS)"; \
+	$(MAKE) build; \
+	$(MAKE) up; \
+	trap '$(MAKE) down' EXIT; \
+	$(DOCKER_COMPOSE) run --rm bench; \
 	trap - EXIT; \
-	$(MAKE) cluster-down
+	$(MAKE) down
 
-perf-controller:
-	bash scripts/perf_stat_pid.sh "$(PROFILE_SECONDS)" "$(PROFILE_PID_FILE)"
-
-flamegraph-controller:
-	bash scripts/flamegraph_controller.sh "$(CONFIG_PATH)" "$(FLAMEGRAPH_OUTPUT)"
-
-clean:
-	rm -rf "$(BURST_STATE_DIR)"
-	cargo clean
-
-docs: docs-rust docs-proto
-
-docs-rust:
+docs:
 	cargo doc --workspace --no-deps --quiet
-
-docs-proto:
 	mkdir -p docs/proto
 	protoc \
 		-I burst-core/proto \

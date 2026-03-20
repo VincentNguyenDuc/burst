@@ -75,153 +75,64 @@ Proto file: `burst-core/proto/burst/v1/control.proto`
 
 ## Running locally
 
-### Using Makefile cluster targets
+### Recommended: Docker Compose (cross-platform)
 
-Start controller + many workers:
+Use Docker Compose to avoid host environment differences between macOS and Linux.
+
+Build runtime images:
 
 ```bash
-make cluster-up
+make docker-build
 ```
 
-By default this reads `cluster.num_workers` and `cluster.worker_slots` from `burst.config.json`.
-
-Submit a job:
+Start controller + workers in containers:
 
 ```bash
-make submit CMD="/bin/echo hello-from-burst"
+make docker-up
 ```
 
-Check status:
+Run throughput benchmark in containerized environment:
 
 ```bash
-make status JOB_ID=job-00000001
+make docker-bench
 ```
 
-Inspect cluster process status:
+Stop containers:
 
 ```bash
-make cluster-status
+make docker-down
 ```
 
-Stop all cluster processes:
+Tail cluster logs:
 
 ```bash
-make cluster-down
+make docker-logs
 ```
 
 ### Throughput benchmark (`jobs/s`)
 
 The repository includes a Python benchmark runner that submits many process jobs and waits for terminal state (`succeeded` / `failed`) before computing throughput.
 
-Use the benchmark-tuned config:
+Run throughput benchmark in Docker:
 
 ```bash
-make cluster-up CONFIG_PATH=burst-bench.config.json
-```
-
-Run throughput benchmark:
-
-```bash
-make bench-throughput \
-	CONFIG_PATH=burst-bench.config.json \
-	JOBS=10000 \
-	SUBMIT_CONCURRENCY=256 \
-	POLL_INTERVAL_MS=5 \
-	BENCH_CMD=/usr/bin/true
-```
-
-Run full release workflow (build all crates in release mode, start release cluster, benchmark, then teardown):
-
-```bash
-make bench-release \
-	CONFIG_PATH=burst-bench.config.json \
-	JOBS=10000 \
-	SUBMIT_CONCURRENCY=256 \
-	POLL_INTERVAL_MS=5 \
-	BENCH_CMD=/usr/bin/true
+make docker-bench
 ```
 
 Notes:
 
-- `bench-release` is the recommended command for reproducible release-mode measurements.
-- On macOS, prefer `BENCH_CMD=/usr/bin/true` (not `/bin/true`).
+- `docker-bench` uses the benchmark command and parameters defined in `docker-compose.yml`.
+- Runtime command path differences are handled inside the container.
 
 Output includes:
 
 - `submit_throughput_jobs_per_sec` (acceptance rate)
 - `throughput_jobs_per_sec` (end-to-end completion rate)
 
-Stop benchmark cluster:
+Stop benchmark cluster (if still running):
 
 ```bash
-make cluster-down
-```
-
-### `perf` + flamegraph profiling (Rust)
-
-Linux-only (`perf` backend):
-
-1. Start the cluster (controller + workers):
-
-```bash
-make cluster-up CONFIG_PATH=burst-bench.config.json
-```
-
-2. Collect controller CPU counters for a fixed window:
-
-```bash
-make perf-controller PROFILE_SECONDS=30
-```
-
-3. Capture controller flamegraph (run workload from another terminal, stop with Ctrl+C):
-
-```bash
-make flamegraph-controller CONFIG_PATH=burst-bench.config.json FLAMEGRAPH_OUTPUT=controller-flamegraph.svg
-```
-
-Dependencies:
-
-- `perf` (Linux)
-- `cargo-flamegraph` (`cargo install flamegraph`)
-
-On macOS, use Instruments or `samply` instead of `perf`.
-
-### Manual run
-
-Controller:
-
-```bash
-cargo run -p burst-controller -- --config burst.config.json
-```
-
-Worker:
-
-```bash
-cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1 --slots 1
-```
-
-CLI submit process job:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json submit process /bin/echo hello
-```
-
-CLI submit python job:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json submit python -c "print('hello from python')"
-```
-
-CLI submit docker job:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json submit docker alpine:3.20 echo hello
-```
-
-CLI status:
-
-```bash
-cargo run -p burst-cli -- --config burst.config.json status --job-id job-00000001
+make docker-down
 ```
 
 ## Tracing logs
