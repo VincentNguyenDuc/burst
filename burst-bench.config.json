@@ -1,0 +1,68 @@
+{
+    "controller": {
+        "bind_addr": "127.0.0.1:50051",
+        "router": "power2",
+        "submission_buffer_capacity": 200000
+    },
+    "workers": [
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-1",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-2",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-3",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-4",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-5",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-6",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-7",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        },
+        {
+            "controller_addr": "http://127.0.0.1:50051",
+            "worker_id": "worker-8",
+            "slots": 4,
+            "poll_interval_ms": 1,
+            "retry_interval_ms": 25
+        }
+    ],
+    "cli": {
+        "controller_addr": "http://127.0.0.1:50051"
+    }
+}

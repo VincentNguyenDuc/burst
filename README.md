@@ -18,6 +18,7 @@ Configuration is centralized in `burst.config.json` at the repository root.
 - `burst-controller`: scheduler + controller gRPC server
 - `burst-worker`: worker runtime that polls, executes, and reports
 - `burst-cli`: client for job submit and status
+- `scripts/bench_throughput.py`: throughput benchmark runner using `burst-cli`
 
 ## Architecture
 
@@ -107,6 +108,83 @@ Stop all cluster processes:
 ```bash
 make cluster-down
 ```
+
+### Throughput benchmark (`jobs/s`)
+
+The repository includes a Python benchmark runner that submits many process jobs and waits for terminal state (`succeeded` / `failed`) before computing throughput.
+
+Use the benchmark-tuned config:
+
+```bash
+make cluster-up CONFIG_PATH=burst-bench.config.json
+```
+
+Run throughput benchmark:
+
+```bash
+make bench-throughput \
+	CONFIG_PATH=burst-bench.config.json \
+	JOBS=10000 \
+	SUBMIT_CONCURRENCY=256 \
+	POLL_INTERVAL_MS=5 \
+	BENCH_CMD=/usr/bin/true
+```
+
+Run full release workflow (build all crates in release mode, start release cluster, benchmark, then teardown):
+
+```bash
+make bench-release \
+	CONFIG_PATH=burst-bench.config.json \
+	JOBS=10000 \
+	SUBMIT_CONCURRENCY=256 \
+	POLL_INTERVAL_MS=5 \
+	BENCH_CMD=/usr/bin/true
+```
+
+Notes:
+
+- `bench-release` is the recommended command for reproducible release-mode measurements.
+- On macOS, prefer `BENCH_CMD=/usr/bin/true` (not `/bin/true`).
+
+Output includes:
+
+- `submit_throughput_jobs_per_sec` (acceptance rate)
+- `throughput_jobs_per_sec` (end-to-end completion rate)
+
+Stop benchmark cluster:
+
+```bash
+make cluster-down
+```
+
+### `perf` + flamegraph profiling (Rust)
+
+Linux-only (`perf` backend):
+
+1. Start the cluster (controller + workers):
+
+```bash
+make cluster-up CONFIG_PATH=burst-bench.config.json
+```
+
+2. Collect controller CPU counters for a fixed window:
+
+```bash
+make perf-controller PROFILE_SECONDS=30
+```
+
+3. Capture controller flamegraph (run workload from another terminal, stop with Ctrl+C):
+
+```bash
+make flamegraph-controller CONFIG_PATH=burst-bench.config.json FLAMEGRAPH_OUTPUT=controller-flamegraph.svg
+```
+
+Dependencies:
+
+- `perf` (Linux)
+- `cargo-flamegraph` (`cargo install flamegraph`)
+
+On macOS, use Instruments or `samply` instead of `perf`.
 
 ### Manual run
 

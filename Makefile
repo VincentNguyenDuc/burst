@@ -1,4 +1,4 @@
-.PHONY: controller submit status cluster-up cluster-down cluster-status docs docs-rust docs-rust-private docs-proto clean
+.PHONY: controller submit status build-release cluster-up cluster-up-release cluster-down cluster-status bench-throughput bench-release perf-controller flamegraph-controller docs docs-rust docs-rust-private docs-proto clean
 
 CMD ?= /bin/echo hello-from-burst
 ARGV ?=
@@ -7,6 +7,15 @@ JOB_ID ?=
 BURST_STATE_DIR ?= .burst-dev
 CONFIG_PATH ?= burst-example.config.json
 OUTPUT_DIR ?= ./.burst-dev/job-outputs
+JOBS ?= 10000
+SUBMIT_CONCURRENCY ?= 256
+POLL_INTERVAL_MS ?= 5
+BENCH_CMD ?= /bin/true
+BENCH_ARGS ?=
+PROFILE_SECONDS ?= 30
+PROFILE_PID_FILE ?= $(BURST_STATE_DIR)/controller.pid
+FLAMEGRAPH_OUTPUT ?= controller-flamegraph.svg
+RELEASE_BIN_DIR ?= target/release
 
 OUTPUT_DIR_ARG = $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
 SUBMIT_TOKENS = $(if $(ARGV),$(ARGV),$(CMD))
@@ -33,6 +42,20 @@ cluster-up:
 	done
 	echo "Cluster started."
 
+build-release:
+	cargo build --workspace --release
+
+cluster-up-release:
+	mkdir -p "$(BURST_STATE_DIR)"
+	echo "Starting release controller on $(CONTROLLER_BIND)"
+	nohup "$(RELEASE_BIN_DIR)/burst-controller" --config "$(CONFIG_PATH)" >"$(BURST_STATE_DIR)/controller.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/controller.pid"
+	sleep 1
+	for wid in $(WORKER_IDS); do \
+		echo "Starting $$wid (release)"; \
+		nohup "$(RELEASE_BIN_DIR)/burst-worker" --config "$(CONFIG_PATH)" --worker-id "$$wid" >"$(BURST_STATE_DIR)/$$wid.log" 2>&1 & echo $$! >"$(BURST_STATE_DIR)/$$wid.pid"; \
+	done
+	echo "Release cluster started."
+
 cluster-status:
 	@state="$(BURST_STATE_DIR)"; \
 	echo "Controller:"; \
@@ -50,6 +73,38 @@ cluster-down:
 		rm -f "$$pidf"; \
 	done; \
 	echo "Cluster stopped."
+
+bench-throughput:
+	cargo build -p burst-cli --release
+	python3 scripts/bench_throughput.py \
+		--config "$(CONFIG_PATH)" \
+		--jobs "$(JOBS)" \
+		--submit-concurrency "$(SUBMIT_CONCURRENCY)" \
+		--poll-interval-ms "$(POLL_INTERVAL_MS)" \
+		--command "$(BENCH_CMD)" \
+		--cli-bin "target/release/burst-cli" \
+		$(foreach arg,$(BENCH_ARGS),--arg "$(arg)")
+
+bench-release:
+	@set -e; \
+	$(MAKE) build-release; \
+	$(MAKE) cluster-up-release CONFIG_PATH="$(CONFIG_PATH)"; \
+	trap '$(MAKE) cluster-down' EXIT; \
+	$(MAKE) bench-throughput \
+		CONFIG_PATH="$(CONFIG_PATH)" \
+		JOBS="$(JOBS)" \
+		SUBMIT_CONCURRENCY="$(SUBMIT_CONCURRENCY)" \
+		POLL_INTERVAL_MS="$(POLL_INTERVAL_MS)" \
+		BENCH_CMD="$(BENCH_CMD)" \
+		BENCH_ARGS="$(BENCH_ARGS)"; \
+	trap - EXIT; \
+	$(MAKE) cluster-down
+
+perf-controller:
+	bash scripts/perf_stat_pid.sh "$(PROFILE_SECONDS)" "$(PROFILE_PID_FILE)"
+
+flamegraph-controller:
+	bash scripts/flamegraph_controller.sh "$(CONFIG_PATH)" "$(FLAMEGRAPH_OUTPUT)"
 
 clean:
 	rm -rf "$(BURST_STATE_DIR)"
