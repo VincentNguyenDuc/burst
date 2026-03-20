@@ -56,7 +56,6 @@ async fn main() {
     };
 
     let bind_addr = config.controller.bind_addr.clone();
-
     let mut registry = RouterRegistry::new();
     registry.register(RoundRobinFactory);
     registry.register(PowerOfTwoFactory);
