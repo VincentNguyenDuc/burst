@@ -350,6 +350,7 @@ RegisterWorkerRequest registers a worker with id and concurrency slots.
 | ----- | ---- | ----- | ----------- |
 | worker_id | [string](#string) |  | Stable unique worker identifier. |
 | slots | [uint32](#uint32) |  | Number of concurrent jobs this worker can accept. |
+| queue_capacity | [uint32](#uint32) |  | Maximum queued&#43;running jobs worker can lease from controller. |
 
 
 

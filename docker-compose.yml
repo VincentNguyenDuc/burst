@@ -12,6 +12,8 @@ services:
             context: .
             dockerfile: Dockerfile
         image: burst-runtime:dev
+        environment:
+            - RUST_LOG=info
         command:
             [
                 "/usr/local/bin/burst-controller",
@@ -21,23 +23,14 @@ services:
         ports:
             - "50051:50051"
 
-    client:
-        build:
-            context: .
-            dockerfile: Dockerfile
-        image: burst-runtime:dev
-        entrypoint: ["/usr/local/bin/burst-client"]
-        command: ["--config", "/app/burst-config/burst.config.json"]
-        depends_on:
-            - controller
-
     worker:
         image: burst-runtime:dev
+        environment:
+            - RUST_LOG=info
         entrypoint: ["/usr/local/bin/burst-worker"]
         command: ["--config", "/app/burst-config/burst.config.json"]
         depends_on:
             - controller
-            - client
 
 volumes:
     steal-output:

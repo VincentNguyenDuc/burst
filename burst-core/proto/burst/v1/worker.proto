@@ -8,6 +8,8 @@ message RegisterWorkerRequest {
   string worker_id = 1;
   // Number of concurrent jobs this worker can accept.
   uint32 slots     = 2;
+  // Maximum queued+running jobs worker can lease from controller.
+  uint32 queue_capacity = 3;
 }
 
 // RegisterWorkerResponse indicates whether registration succeeded.

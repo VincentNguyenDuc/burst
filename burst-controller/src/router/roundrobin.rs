@@ -12,7 +12,7 @@ impl RoundRobinRouter {
         let mut available_workers = context
             .workers
             .iter()
-            .filter(|(_, worker)| worker.processing_slots < worker.max_slots)
+            .filter(|(_, worker)| worker.leased_jobs < worker.queue_capacity)
             .map(|(worker_id, _)| worker_id.clone())
             .collect::<Vec<_>>();
 
@@ -105,8 +105,8 @@ mod tests {
             workers: HashMap::from([(
                 "worker-1".to_string(),
                 WorkerState {
-                    max_slots: 1,
-                    processing_slots: 0,
+                    queue_capacity: 1,
+                    leased_jobs: 0,
                 },
             )]),
         };
@@ -118,7 +118,7 @@ mod tests {
             context
                 .workers
                 .get("worker-1")
-                .map(|worker| worker.processing_slots),
+                .map(|worker| worker.leased_jobs),
             Some(0)
         );
     }
@@ -132,15 +132,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 0,
+                        queue_capacity: 1,
+                        leased_jobs: 0,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 0,
+                        queue_capacity: 1,
+                        leased_jobs: 0,
                     },
                 ),
             ]),
@@ -168,15 +168,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 1,
+                        queue_capacity: 1,
+                        leased_jobs: 1,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 0,
+                        queue_capacity: 1,
+                        leased_jobs: 0,
                     },
                 ),
             ]),

@@ -33,7 +33,7 @@ impl WorkerPeerRpc for WorkerPeerService {
         }
 
         if req.thief_worker_id == self.worker_id {
-            tracing::debug!(
+            tracing::info!(
                 victim_worker_id = %self.worker_id,
                 thief_worker_id = %req.thief_worker_id,
                 "ignoring self-steal request"
@@ -56,7 +56,7 @@ impl WorkerPeerRpc for WorkerPeerService {
         }
 
         if jobs.is_empty() {
-            tracing::debug!(
+            tracing::info!(
                 victim_worker_id = %self.worker_id,
                 thief_worker_id = %req.thief_worker_id,
                 requested_max_jobs = max_jobs,
@@ -139,7 +139,7 @@ pub async fn try_steal_from_peer(
     peer: &PeerEndpoint,
     max_jobs: u32,
 ) -> Result<Vec<AssignedJob>, String> {
-    tracing::debug!(
+    tracing::info!(
         worker_id,
         victim_worker_id = %peer.worker_id,
         endpoint = %peer.endpoint,
@@ -161,7 +161,7 @@ pub async fn try_steal_from_peer(
 
     let jobs = response.into_inner().jobs;
 
-    tracing::debug!(
+    tracing::info!(
         worker_id,
         victim_worker_id = %peer.worker_id,
         endpoint = %peer.endpoint,

@@ -9,11 +9,10 @@ build:
 
 up:
 	@set -e; \
-	$(DOCKER_COMPOSE) up -d controller; \
-	$(DOCKER_COMPOSE) up -d client; \
+	$(DOCKER_COMPOSE) up -d --build controller; \
 	for i in $$(seq 1 $(WORKER_COUNT)); do \
 		docker rm -f $(WORKER_NAME_PREFIX)$$i >/dev/null 2>&1 || true; \
-		$(DOCKER_COMPOSE) run \
+		COMPOSE_IGNORE_ORPHANS=1 $(DOCKER_COMPOSE) run \
 			-d \
 			--name $(WORKER_NAME_PREFIX)$$i worker \
 			--config /app/burst-config/burst.config.json \
@@ -24,7 +23,15 @@ down:
 	$(DOCKER_COMPOSE) down --remove-orphans
 
 logs:
-	$(DOCKER_COMPOSE) logs -f --tail=200
+	@set -e; \
+	containers=$$(docker ps --filter label=com.docker.compose.project=burst --format '{{.Names}}' | sort); \
+	if [ -z "$$containers" ]; then \
+		echo "No running burst containers"; \
+		exit 0; \
+	fi; \
+	echo "Streaming logs from:"; \
+	echo "$$containers"; \
+	echo "$$containers" | xargs -I{} -P 16 sh -c 'docker logs "{}" 2>&1 | sed "s/^/[{}] /"'
 
 test:
 	$(DOCKER_COMPOSE) build test

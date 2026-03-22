@@ -123,6 +123,7 @@ async fn main() {
         .register_worker(RegisterWorkerRequest {
             worker_id: worker_id.clone(),
             slots,
+            queue_capacity: local_queue_capacity.min(u32::MAX as usize) as u32,
         })
         .await
     {
