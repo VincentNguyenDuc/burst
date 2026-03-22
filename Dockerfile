@@ -25,9 +25,10 @@ RUN apt-get update \
 COPY --from=builder /app/target/release/burst-controller /usr/local/bin/burst-controller
 COPY --from=builder /app/target/release/burst-worker /usr/local/bin/burst-worker
 COPY --from=builder /app/target/release/burst-cli /usr/local/bin/burst-cli
-COPY --from=builder /app/scripts/bench_throughput.py /app/scripts/bench_throughput.py
+COPY --from=builder /app/scripts /app/scripts
 COPY --from=builder /app/burst-config /app/burst-config
 
-RUN chmod +x /app/scripts/bench_throughput.py
+RUN chmod +x /app/scripts/*.sh
+RUN chmod +x /app/scripts/*.sh
 
-CMD ["/usr/local/bin/burst-controller", "--config", "/app/burst-config/burst-docker.config.json"]
+CMD ["/usr/local/bin/burst-controller", "--config", "/app/burst-config/burst.config.json"]

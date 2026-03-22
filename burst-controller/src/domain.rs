@@ -14,8 +14,8 @@ pub struct Job {
 /// Worker runtime capacity tracked by controller.
 #[derive(Debug, Clone)]
 pub struct WorkerState {
-    pub max_slots: u32,
-    pub processing_slots: u32,
+    pub queue_capacity: u32,
+    pub leased_jobs: u32,
 }
 
 /// Mutable routing snapshot consumed by router strategies.

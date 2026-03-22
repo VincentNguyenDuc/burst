@@ -38,15 +38,15 @@ impl ControllerInner {
                 continue;
             };
 
-            if worker.processing_slots >= worker.max_slots {
+            if worker.leased_jobs >= worker.queue_capacity {
                 tracing::warn!(
                     worker_id,
-                    "scheduler selected worker without available slots"
+                    "scheduler selected worker without available queue capacity"
                 );
                 continue;
             }
 
-            worker.processing_slots += 1;
+            worker.leased_jobs += 1;
 
             self.job_states.insert(job_id.clone(), "leased".to_string());
             self.worker_queues
@@ -194,6 +194,7 @@ impl ControllerRpc for ControllerService {
         let req = request.into_inner();
         let worker_id = req.worker_id.clone();
         let slots = req.slots.max(1);
+        let queue_capacity = req.queue_capacity.max(slots).max(1);
         if req.worker_id.trim().is_empty() {
             tracing::warn!("worker registration rejected: empty worker_id");
             return Err(Status::invalid_argument("worker_id cannot be empty"));
@@ -203,14 +204,14 @@ impl ControllerRpc for ControllerService {
         inner.scheduling.workers.insert(
             req.worker_id.clone(),
             WorkerState {
-                max_slots: slots,
-                processing_slots: 0,
+                queue_capacity,
+                leased_jobs: 0,
             },
         );
         inner.worker_queues.entry(req.worker_id).or_default();
         inner.schedule_pending();
 
-        tracing::info!(worker_id, slots, "worker registered");
+        tracing::info!(worker_id, slots, queue_capacity, "worker registered");
 
         Ok(Response::new(RegisterWorkerResponse { accepted: true }))
     }
@@ -287,12 +288,12 @@ impl ControllerRpc for ControllerService {
         }
 
         if let Some(worker) = inner.scheduling.workers.get_mut(&req.worker_id) {
-            worker.processing_slots = worker.processing_slots.saturating_sub(1);
+            worker.leased_jobs = worker.leased_jobs.saturating_sub(1);
             tracing::debug!(
                 worker_id = %req.worker_id,
-                max_slots = worker.max_slots,
-                processing_slots = worker.processing_slots,
-                "worker slot released"
+                queue_capacity = worker.queue_capacity,
+                leased_jobs = worker.leased_jobs,
+                "worker lease released"
             );
         }
         inner.schedule_pending();
@@ -365,6 +366,7 @@ mod tests {
             .register_worker(Request::new(RegisterWorkerRequest {
                 worker_id: "worker-1".to_string(),
                 slots: 1,
+                queue_capacity: 1,
             }))
             .await
             .expect("worker registration should succeed");
@@ -428,6 +430,7 @@ mod tests {
             .register_worker(Request::new(RegisterWorkerRequest {
                 worker_id: "worker-1".to_string(),
                 slots: 1,
+                queue_capacity: 1,
             }))
             .await
             .expect("worker registration should succeed");
@@ -453,6 +456,7 @@ mod tests {
             .register_worker(Request::new(RegisterWorkerRequest {
                 worker_id: "worker-1".to_string(),
                 slots: 1,
+                queue_capacity: 1,
             }))
             .await
             .expect("worker registration should succeed");
@@ -571,6 +575,7 @@ mod tests {
             .register_worker(Request::new(RegisterWorkerRequest {
                 worker_id: "worker-1".to_string(),
                 slots: 1,
+                queue_capacity: 1,
             }))
             .await
             .expect("worker registration should succeed");

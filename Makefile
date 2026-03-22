@@ -1,37 +1,45 @@
-.PHONY: build up down logs bench test docs
+.PHONY: build up down logs bench test steal-test docs
 
 DOCKER_COMPOSE ?= docker compose
-WORKER_SERVICES ?= worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 worker-8
-DOCKER_CLUSTER_SERVICES ?= controller $(WORKER_SERVICES)
+WORKER_COUNT ?= 8
+WORKER_NAME_PREFIX ?= worker-
 
 build:
 	$(DOCKER_COMPOSE) build
 
 up:
-	$(DOCKER_COMPOSE) up -d $(DOCKER_CLUSTER_SERVICES)
+	@set -e; \
+	$(DOCKER_COMPOSE) up -d --build controller; \
+	for i in $$(seq 1 $(WORKER_COUNT)); do \
+		docker rm -f $(WORKER_NAME_PREFIX)$$i >/dev/null 2>&1 || true; \
+		COMPOSE_IGNORE_ORPHANS=1 $(DOCKER_COMPOSE) run \
+			-d \
+			--name $(WORKER_NAME_PREFIX)$$i worker \
+			--config /app/burst-config/burst.config.json \
+			--worker-id $(WORKER_NAME_PREFIX)$$i >/dev/null; \
+	done
 
 down:
 	$(DOCKER_COMPOSE) down --remove-orphans
 
 logs:
-	$(DOCKER_COMPOSE) logs -f --tail=200 $(DOCKER_CLUSTER_SERVICES)
-
-bench:
 	@set -e; \
-	$(MAKE) build; \
-	$(MAKE) up; \
-	trap '$(MAKE) down' EXIT; \
-	$(DOCKER_COMPOSE) run --rm bench; \
-	trap - EXIT; \
-	$(MAKE) down
+	containers=$$(docker ps --filter label=com.docker.compose.project=burst --format '{{.Names}}' | sort); \
+	if [ -z "$$containers" ]; then \
+		echo "No running burst containers"; \
+		exit 0; \
+	fi; \
+	echo "Streaming logs from:"; \
+	echo "$$containers"; \
+	echo "$$containers" | xargs -I{} -P 16 sh -c 'docker logs "{}" 2>&1 | sed "s/^/[{}] /"'
 
 test:
 	$(DOCKER_COMPOSE) build test
 	$(DOCKER_COMPOSE) run --rm test
 
 format:
-	cargo fmt --all --check
-	black .
+	cargo fmt --all
+	black scripts/
 
 docs:
 	cargo doc --workspace --no-deps --quiet
@@ -42,4 +50,5 @@ docs:
 		--doc_opt=markdown,burst.v1.md \
 		burst-core/proto/burst/v1/control.proto \
 		burst-core/proto/burst/v1/job.proto \
-		burst-core/proto/burst/v1/worker.proto
+		burst-core/proto/burst/v1/worker.proto \
+		burst-core/proto/burst/v1/peer.proto

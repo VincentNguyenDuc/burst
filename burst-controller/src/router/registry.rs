@@ -34,7 +34,7 @@ impl RouterRegistry {
 #[cfg(test)]
 mod tests {
     use super::RouterRegistry;
-    use crate::router::{RoundRobinFactory, RouterFactory};
+    use crate::router::{BiasedFactory, RoundRobinFactory, RouterFactory};
 
     struct AlphaFactory;
 
@@ -63,10 +63,18 @@ mod tests {
     fn available_is_sorted() {
         let mut registry = RouterRegistry::new();
         registry.register(RoundRobinFactory);
+        registry.register(BiasedFactory);
         registry.register(AlphaFactory);
 
         let names = registry.available();
 
-        assert_eq!(names, vec!["alpha".to_string(), "roundrobin".to_string()]);
+        assert_eq!(
+            names,
+            vec![
+                "alpha".to_string(),
+                "biased".to_string(),
+                "roundrobin".to_string()
+            ]
+        );
     }
 }

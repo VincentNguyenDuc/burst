@@ -8,22 +8,22 @@ pub struct P2CRouter;
 
 impl P2CRouter {
     fn worker_load(worker: &crate::domain::WorkerState) -> f64 {
-        if worker.max_slots == 0 {
+        if worker.queue_capacity == 0 {
             return f64::INFINITY;
         }
-        worker.processing_slots as f64 / worker.max_slots as f64
+        worker.leased_jobs as f64 / worker.queue_capacity as f64
     }
 
     fn choose_worker(&mut self, context: &crate::domain::RoutingContext) -> Option<String> {
         let mut available_workers = context
             .workers
             .iter()
-            .filter(|(_, worker)| worker.processing_slots < worker.max_slots)
+            .filter(|(_, worker)| worker.leased_jobs < worker.queue_capacity)
             .map(|(worker_id, worker)| {
                 (
                     worker_id.clone(),
                     Self::worker_load(worker),
-                    worker.max_slots.saturating_sub(worker.processing_slots),
+                    worker.queue_capacity.saturating_sub(worker.leased_jobs),
                 )
             })
             .collect::<Vec<_>>();
@@ -119,8 +119,8 @@ mod tests {
             workers: HashMap::from([(
                 "worker-a".to_string(),
                 WorkerState {
-                    max_slots: 1,
-                    processing_slots: 0,
+                    queue_capacity: 1,
+                    leased_jobs: 0,
                 },
             )]),
         };
@@ -138,8 +138,8 @@ mod tests {
             workers: HashMap::from([(
                 "worker-a".to_string(),
                 WorkerState {
-                    max_slots: 1,
-                    processing_slots: 1,
+                    queue_capacity: 1,
+                    leased_jobs: 1,
                 },
             )]),
         };
@@ -159,15 +159,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        max_slots: 4,
-                        processing_slots: 3,
+                        queue_capacity: 4,
+                        leased_jobs: 3,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        max_slots: 4,
-                        processing_slots: 1,
+                        queue_capacity: 4,
+                        leased_jobs: 1,
                     },
                 ),
             ]),
@@ -191,15 +191,15 @@ mod tests {
                 (
                     "worker-a".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 1,
+                        queue_capacity: 1,
+                        leased_jobs: 1,
                     },
                 ),
                 (
                     "worker-b".to_string(),
                     WorkerState {
-                        max_slots: 1,
-                        processing_slots: 0,
+                        queue_capacity: 1,
+                        leased_jobs: 0,
                     },
                 ),
             ]),

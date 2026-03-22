@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package burst.v1;
+import "burst/v1/job.proto";
+
+// WorkerPeerRpc defines peer-to-peer work-stealing APIs between workers.
+service WorkerPeerRpc {
+  // StealJobs asks a peer worker for a bounded number of queued jobs.
+  rpc StealJobs(StealJobsRequest) returns (StealJobsResponse);
+}
+
+// StealJobsRequest identifies the thief and requested steal size.
+message StealJobsRequest {
+  string thief_worker_id = 1;
+  uint32 max_jobs = 2;
+}
+
+// StealJobsResponse returns zero or more stolen jobs.
+message StealJobsResponse {
+  repeated AssignedJob jobs = 1;
+}

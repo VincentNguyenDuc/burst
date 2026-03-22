@@ -14,19 +14,24 @@
 //! - `--worker-id <id>` must match a `worker_id` in the `workers` list
 
 mod executor;
+mod peer;
+mod worker;
 
+use std::collections::VecDeque;
 use std::io::IsTerminal;
+use std::sync::Arc;
 use std::time::Duration;
 
 use burst_core::config::BurstConfig;
 use burst_core::proto::{
-    PollJobRequest, RegisterWorkerRequest, ReportJobResultRequest,
-    controller_rpc_client::ControllerRpcClient, poll_job_response,
+    AssignedJob, RegisterWorkerRequest, controller_rpc_client::ControllerRpcClient,
 };
 use clap::Parser;
-use executor::execute_job;
-use tokio::time::sleep;
+use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
+
+use peer::{build_peer_endpoints, start_peer_server};
+use worker::run;
 
 #[derive(Parser)]
 #[command(about = "Burst worker service")]
@@ -71,13 +76,38 @@ async fn main() {
 
     let controller_addr = worker_config.controller_addr.clone();
     let slots = worker_config.slots.max(1);
+    let local_queue_capacity = worker_config.local_queue_capacity.max(slots as usize);
     let poll_interval = Duration::from_millis(worker_config.poll_interval_ms.max(10));
     let retry_interval = Duration::from_millis(worker_config.retry_interval_ms.max(10));
+    let steal_interval = Duration::from_millis(worker_config.steal_interval_ms.max(10));
+    let steal_batch_size = worker_config.steal_batch_size.max(1);
+
+    let job_queue = Arc::new(Mutex::new(VecDeque::<AssignedJob>::new()));
+
+    if let Some(peer_listen_addr) = worker_config.peer_listen_addr.as_deref() {
+        if let Err(error) =
+            start_peer_server(&worker_id, Arc::clone(&job_queue), peer_listen_addr, 1)
+        {
+            tracing::error!(worker_id, error = %error, "failed to start peer stealing server");
+            std::process::exit(2);
+        }
+
+        tracing::info!(worker_id, peer_listen_addr, "peer stealing server started");
+    }
+
+    let peers = build_peer_endpoints(&config.workers, &worker_id);
+
+    if peers.is_empty() {
+        tracing::info!(worker_id, "no peer endpoints configured; stealing disabled");
+    } else {
+        tracing::info!(worker_id, peers = peers.len(), "peer stealing enabled");
+    }
 
     tracing::info!(
         controller = controller_addr,
         worker_id,
         slots,
+        local_queue_capacity,
         "worker starting"
     );
 
@@ -93,6 +123,7 @@ async fn main() {
         .register_worker(RegisterWorkerRequest {
             worker_id: worker_id.clone(),
             slots,
+            queue_capacity: local_queue_capacity.min(u32::MAX as usize) as u32,
         })
         .await
     {
@@ -102,69 +133,19 @@ async fn main() {
 
     tracing::info!(worker_id, slots, "worker registered");
 
-    fn assigned_job_type(job: &burst_core::proto::AssignedJob) -> &'static str {
-        match job.spec.as_ref().and_then(|spec| spec.r#type.as_ref()) {
-            Some(burst_core::proto::job_spec::Type::Process(_)) => "process",
-            Some(burst_core::proto::job_spec::Type::Python(_)) => "python",
-            Some(burst_core::proto::job_spec::Type::Docker(_)) => "docker",
-            None => "unknown",
-        }
-    }
-
-    loop {
-        let poll_response = match client
-            .poll_job(PollJobRequest {
-                worker_id: worker_id.clone(),
-            })
-            .await
-        {
-            Ok(response) => response.into_inner(),
-            Err(error) => {
-                tracing::warn!(error = %error, "poll failed; retrying");
-                sleep(retry_interval).await;
-                continue;
-            }
-        };
-
-        match poll_response.result {
-            Some(poll_job_response::Result::Job(job)) => {
-                let job_id = job.job_id.clone();
-                let job_type = assigned_job_type(&job);
-                tracing::info!(worker_id, job_id, job_type, "job received from poll");
-                let (exit_code, error_message) = execute_job(job).await;
-
-                if error_message.is_empty() {
-                    tracing::info!(worker_id, job_id, exit_code, "job execution finished");
-                } else {
-                    tracing::warn!(
-                        worker_id,
-                        job_id,
-                        exit_code,
-                        error_message = %error_message,
-                        "job execution finished with error"
-                    );
-                }
-
-                if let Err(error) = client
-                    .report_job_result(ReportJobResultRequest {
-                        worker_id: worker_id.clone(),
-                        job_id,
-                        exit_code,
-                        error_message,
-                    })
-                    .await
-                {
-                    tracing::warn!(error = %error, "failed to report job result");
-                } else {
-                    tracing::debug!(worker_id, "job result reported");
-                }
-            }
-            Some(poll_job_response::Result::Empty(_)) | None => {
-                tracing::debug!(worker_id, "poll returned no jobs");
-                sleep(poll_interval).await;
-            }
-        }
-    }
+    run(
+        &mut client,
+        &worker_id,
+        job_queue,
+        peers,
+        slots as usize,
+        local_queue_capacity,
+        steal_batch_size,
+        steal_interval,
+        retry_interval,
+        poll_interval,
+    )
+    .await;
 }
 
 #[cfg(test)]
@@ -181,7 +162,7 @@ mod tests {
 
     use burst_core::proto::{AssignedJob, JobSpec};
 
-    use super::execute_job;
+    use crate::executor::execute_job;
 
     fn temp_output_dir(name: &str) -> PathBuf {
         let nanos = SystemTime::now()

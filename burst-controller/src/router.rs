@@ -3,12 +3,14 @@
 //! A scheduler implementation only needs to implement [`RouterStrategy`]
 //! and register a factory in [`RouterRegistry`].
 
+mod biased;
 mod power2;
 mod registry;
 mod roundrobin;
 
 use crate::domain::{RoutingContext, RoutingDecision};
 
+pub use biased::BiasedFactory;
 pub use power2::PowerOfTwoFactory;
 pub use registry::RouterRegistry;
 pub use roundrobin::RoundRobinFactory;
