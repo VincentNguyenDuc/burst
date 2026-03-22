@@ -1,268 +1,103 @@
 # burst
 
-`burst` is a high-throughput job scheduler prototype for short process jobs running on a shared cluster.
+`burst` is a distributed job scheduling prototype for short-lived process workloads.
 
-Current POC scope:
+## Current architecture
 
-- 1 controller process
-- N worker processes
-- 1 CLI client session
-- gRPC communication between all components
-- In-memory round-robin scheduling
+- Control plane: one controller process exposes gRPC APIs for submit, status, worker registration, polling, and result reporting.
+- Data plane: workers execute jobs locally, maintain local leased queues, and report terminal results.
+- Worker-to-worker balancing: idle workers can steal queued jobs from peer workers over gRPC.
+- Scheduling: pluggable router strategies selected by `controller.router` in config.
+- State model: controller holds in-memory scheduling and job lifecycle state.
 
-Configuration is centralized in `burst.config.json` at the repository root.
+## Capability summary
 
-## Workspace layout
+- Submit and track process, Python, and Docker job specs through `burst-cli`.
+- Lease jobs to workers using router strategies (`roundrobin`, `power2`, `biased`).
+- Queue-capacity-aware leasing: workers register slots and queue capacity; controller schedules based on available queue room.
+- Peer work stealing for imbalance recovery (`StealJobs` RPC).
+- Local output capture per job (`<job_id>.stdout`, `<job_id>.stderr`).
+- Docker Compose workflow for controller and multi-worker clusters.
 
-- `burst-core`: shared protobuf contract and generated gRPC types
-- `burst-controller`: scheduler + controller gRPC server
-- `burst-worker`: worker runtime that polls, executes, and reports
-- `burst-cli`: client for job submit and status
-- `scripts/bench_throughput.py`: throughput benchmark runner using `burst-cli`
+## Core components
 
-## Architecture
+- `burst-controller`: scheduling, leasing, status transitions, worker registry.
+- `burst-worker`: polling loop, local queue execution, peer steal server/client.
+- `burst-cli`: submit and status client.
+- `burst-core`: shared config model, protobuf contracts, generated gRPC types.
+- `scripts/test_work_stealing.py`: local batch submit utility for steal-heavy experiments.
 
-### Control plane
+## Job lifecycle
 
-The controller owns in-memory state:
+1. Client submits `JobSpec`.
+2. Controller enqueues and leases jobs to workers according to router strategy.
+3. Worker polls, enqueues locally, executes up to slot limit, and reports result.
+4. Idle workers may steal queued jobs from peers.
+5. Controller updates terminal state (`succeeded` or `failed`).
 
-- pending jobs queue
-- worker registry and available slots
-- per-worker leased job queues
-- job status map
+## RPC surfaces
 
-Workers register with `worker_id` and `slots`, then repeatedly poll for work.
-Workers also expose a peer RPC endpoint and steal queued jobs from other workers while idle.
+- `ControllerRpc` (control plane):
+  - `SubmitJob`
+  - `GetJobStatus`
+  - `RegisterWorker`
+  - `PollJob`
+  - `ReportJobResult`
+  - `Heartbeat`
+- `WorkerPeerRpc` (peer balancing):
+  - `StealJobs`
 
-### Scheduling
+Proto references:
 
-Scheduling is pluggable through a strategy trait and registry in the controller.
+- `burst-core/proto/burst/v1/control.proto`
+- `burst-core/proto/burst/v1/job.proto`
+- `burst-core/proto/burst/v1/worker.proto`
+- `burst-core/proto/burst/v1/peer.proto`
 
-- default strategy: roundrobin
-- strategy selected by `controller.scheduler` in `burst.config.json`
+## Running with Docker Compose
 
-## Shared configuration
-
-All components load the same JSON file (`burst.config.json`) so runtime settings are tracked in one place.
-
-Top-level sections:
-
-- `controller`: bind address, scheduler strategy, and submission buffer capacity
-- `worker`: controller address, default slots, poll/retry timing, and optional peer stealing settings
-- `cli`: controller address used by submit/status commands
-- `cluster`: local test-cluster worker count and worker slots for Makefile automation
-
-### Job lifecycle
-
-1. CLI submits `JobSpec { command, args }`
-2. Controller stores job as `queued`
-3. Scheduler leases job to an available worker (`leased`)
-4. Worker executes process with `tokio::process::Command`
-5. Worker reports exit result
-6. Controller marks job as `succeeded` or `failed`
-
-When peer stealing is enabled, an idle worker attempts `StealJobs` against peer workers before polling the controller again.
-
-## RPC contract
-
-Service: `ControllerRpc`
-
-- `SubmitJob`
-- `GetJobStatus`
-- `RegisterWorker`
-- `PollJob`
-- `ReportJobResult`
-- `Heartbeat`
-
-Proto file: `burst-core/proto/burst/v1/control.proto`
-
-Service: `WorkerPeerRpc`
-
-- `StealJobs`
-
-Proto file: `burst-core/proto/burst/v1/peer.proto`
-
-Worker stealing-related config fields:
-
-- `peer_listen_addr` (optional): worker bind address for serving peer steal requests
-- `peer_advertise_addr` (optional): address peers should dial (useful for Docker service DNS)
-- `steal_batch_size`: max jobs requested per peer steal attempt
-- `steal_interval_ms`: delay between peer steal attempts when idle
-
-## Running locally
-
-### Recommended: Docker Compose (cross-platform)
-
-Use Docker Compose to avoid host environment differences between macOS and Linux.
-
-Build runtime images:
+Build images:
 
 ```bash
 make build
 ```
 
-Start controller + workers in containers:
+Start controller and workers:
 
 ```bash
 make up
 ```
 
-Run throughput benchmark in containerized environment:
-
-```bash
-make bench
-```
-
-Run tests in Docker:
-
-```bash
-make test
-```
-
-Stop containers:
-
-```bash
-make down
-```
-
-Tail cluster logs:
+Tail logs from all running project containers:
 
 ```bash
 make logs
 ```
 
-### Throughput benchmark (`jobs/s`)
-
-The repository includes a Python benchmark runner that submits many process jobs and waits for terminal state (`succeeded` / `failed`) before computing throughput.
-
-Run throughput benchmark in Docker:
-
-```bash
-make bench
-```
-
-Run work-stealing integration test in Docker Compose (long/short skew with delayed peer workers):
-
-```bash
-make steal-test
-```
-
-Notes:
-
-- `make bench` uses the benchmark command and parameters defined in `docker-compose.yml`.
-- Runtime command path differences are handled inside the container.
-
-Output includes:
-
-- `submit_throughput_jobs_per_sec` (acceptance rate)
-- `throughput_jobs_per_sec` (end-to-end completion rate)
-
-Stop benchmark cluster (if still running):
+Stop cluster:
 
 ```bash
 make down
 ```
 
-## Tracing logs
+## Development commands
 
-Controller and worker emit structured lifecycle logs for:
-
-- job submit validation and queueing
-- scheduler lease decisions (`job_id`, `worker_id`, `job_type`)
-- worker poll assignment and execution start/finish
-- result reporting and state transitions
-
-Default log level is `info`. Override with `RUST_LOG`.
-
-Examples:
+Run Rust tests:
 
 ```bash
-RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
-RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
+cargo test -p burst-controller -p burst-worker
 ```
 
-## Tracing logs
-
-Controller and worker emit structured lifecycle logs for:
-
-- job submit validation and queueing
-- scheduler lease decisions (`job_id`, `worker_id`, `job_type`)
-- worker poll assignment and execution start/finish
-- result reporting and state transitions
-
-Default log level is `info`. Override with `RUST_LOG`.
-
-Examples:
-
-```bash
-RUST_LOG=info cargo run -p burst-controller -- --config burst.config.json
-RUST_LOG=debug cargo run -p burst-worker -- --config burst.config.json --worker-id worker-1
-```
-
-## Build and docs
-
-Workspace check:
-
-```bash
-cargo check
-```
-
-Generate all docs (Rust + proto):
+Generate Rust and proto docs:
 
 ```bash
 make docs
 ```
 
-### Rust docs (`cargo doc`)
-
-Generate Rust API docs for all crates:
-
-```bash
-cargo doc --workspace --no-deps
-```
-
-For private modules and internal architecture docs:
-
-```bash
-cargo doc --workspace --no-deps --document-private-items
-```
-
-Shortcuts:
-
-```bash
-make docs-rust
-make docs-rust-private
-```
-
-Output location:
-
-- `target/doc/index.html`
-
-### Proto docs
-
-Generate protobuf API docs from:
-
-- `burst-core/proto/burst/v1/control.proto`
-- `burst-core/proto/burst/v1/job.proto`
-- `burst-core/proto/burst/v1/worker.proto`
-
-```bash
-make docs-proto
-```
-
-Output location:
-
-- `docs/proto/burst.v1.md`
-
-Requirements for `make docs-proto`:
-
-- `protoc`
-- `protoc-gen-doc`
-
 ## Current limitations
 
-- single controller instance (not horizontally scaled)
-- in-memory state only (no persistence)
-- no retries or requeue on worker loss yet
-- no authn/authz between components
-- lease/idempotency semantics are still minimal (no lease ids yet)
+- Single active controller architecture; no multi-controller coordination.
+- In-memory controller state; no durable job state store.
+- No tenant quotas, admission control, or rate limiting.
+- No authn/authz between services.
+- Lease semantics are minimal and optimized for prototype speed.

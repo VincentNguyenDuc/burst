@@ -1,8 +1,15 @@
 # Proto documentation
 
-This directory contains generated API documentation for `burst.v1` protobuf contracts.
+This directory contains generated API docs for the `burst.v1` protobuf contracts used by controller, workers, and CLI.
 
-## Generate with local `protoc` + `protoc-gen-doc`
+## Source contracts
+
+- `burst-core/proto/burst/v1/control.proto`
+- `burst-core/proto/burst/v1/job.proto`
+- `burst-core/proto/burst/v1/worker.proto`
+- `burst-core/proto/burst/v1/peer.proto`
+
+## Regenerate docs
 
 Prerequisites:
 
@@ -12,9 +19,9 @@ Prerequisites:
 From repository root:
 
 ```bash
-make docs-proto
+make docs
 ```
 
-Output file:
+Generated output:
 
 - `docs/proto/burst.v1.md`
