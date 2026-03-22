@@ -54,6 +54,8 @@ pub struct WorkerConfig {
     pub worker_id: String,
     pub controller_addr: String,
     pub slots: u32,
+    #[serde(default = "default_local_queue_capacity")]
+    pub local_queue_capacity: usize,
     pub poll_interval_ms: u64,
     pub retry_interval_ms: u64,
     pub peer_listen_addr: Option<String>,
@@ -72,12 +74,17 @@ fn default_steal_interval_ms() -> u64 {
     150
 }
 
+fn default_local_queue_capacity() -> usize {
+    64
+}
+
 impl Default for WorkerConfig {
     fn default() -> Self {
         Self {
             worker_id: "worker-1".to_string(),
             controller_addr: "http://127.0.0.1:50051".to_string(),
             slots: 1,
+            local_queue_capacity: default_local_queue_capacity(),
             poll_interval_ms: 250,
             retry_interval_ms: 500,
             peer_listen_addr: None,
@@ -132,6 +139,7 @@ mod tests {
         assert_eq!(config.controller.submission_buffer_capacity, 32);
         assert_eq!(config.workers.len(), 1);
         assert_eq!(config.workers[0].worker_id, "worker-1");
+        assert_eq!(config.workers[0].local_queue_capacity, 64);
         assert_eq!(config.cli.controller_addr, "http://127.0.0.1:50051");
     }
 
@@ -151,6 +159,7 @@ mod tests {
       "worker_id": "worker-x",
       "controller_addr": "http://127.0.0.1:7000",
       "slots": 3,
+            "local_queue_capacity": 19,
       "poll_interval_ms": 25,
       "retry_interval_ms": 50
     }
@@ -166,6 +175,7 @@ mod tests {
         assert_eq!(config.controller.bind_addr, "127.0.0.1:7000");
         assert_eq!(config.controller.submission_buffer_capacity, 48);
         assert_eq!(config.workers[0].slots, 3);
+        assert_eq!(config.workers[0].local_queue_capacity, 19);
         assert_eq!(config.cli.controller_addr, "http://127.0.0.1:7000");
     }
 

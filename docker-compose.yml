@@ -16,220 +16,28 @@ services:
             [
                 "/usr/local/bin/burst-controller",
                 "--config",
-                "/app/burst-config/burst-docker.config.json",
+                "/app/burst-config/burst.config.json",
             ]
         ports:
             - "50051:50051"
 
-    worker-1:
+    client:
+        build:
+            context: .
+            dockerfile: Dockerfile
         image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-1",
-            ]
+        entrypoint: ["/usr/local/bin/burst-client"]
+        command: ["--config", "/app/burst-config/burst.config.json"]
         depends_on:
             - controller
 
-    worker-2:
+    worker:
         image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-2",
-            ]
+        entrypoint: ["/usr/local/bin/burst-worker"]
+        command: ["--config", "/app/burst-config/burst.config.json"]
         depends_on:
             - controller
-
-    worker-3:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-3",
-            ]
-        depends_on:
-            - controller
-
-    worker-4:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-4",
-            ]
-        depends_on:
-            - controller
-
-    worker-5:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-5",
-            ]
-        depends_on:
-            - controller
-
-    worker-6:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-6",
-            ]
-        depends_on:
-            - controller
-
-    worker-7:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-7",
-            ]
-        depends_on:
-            - controller
-
-    worker-8:
-        image: burst-runtime:dev
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-docker.config.json",
-                "--worker-id",
-                "worker-8",
-            ]
-        depends_on:
-            - controller
-
-    bench:
-        image: burst-runtime:dev
-        depends_on:
-            - controller
-            - worker-1
-            - worker-2
-            - worker-3
-            - worker-4
-            - worker-5
-            - worker-6
-            - worker-7
-            - worker-8
-        entrypoint: ["python3", "/app/scripts/bench_throughput.py"]
-        command:
-            - "--config"
-            - "/app/burst-config/burst-docker.config.json"
-            - "--jobs"
-            - "10000"
-            - "--submit-concurrency"
-            - "256"
-            - "--poll-interval-ms"
-            - "5"
-            - "--command"
-            - "/usr/bin/true"
-            - "--cli-bin"
-            - "/usr/local/bin/burst-cli"
-
-    controller-steal:
-        profiles: ["steal-test"]
-        image: burst-runtime:dev
-        hostname: controller-steal
-        command:
-            [
-                "/usr/local/bin/burst-controller",
-                "--config",
-                "/app/burst-config/burst-steal-test.config.json",
-            ]
-
-    steal-worker-1:
-        profiles: ["steal-test"]
-        image: burst-runtime:dev
-        hostname: steal-worker-1
-        command:
-            [
-                "/usr/local/bin/burst-worker",
-                "--config",
-                "/app/burst-config/burst-steal-test.config.json",
-                "--worker-id",
-                "worker-1",
-            ]
-        depends_on:
-            - controller-steal
-        volumes:
-            - steal-output:/tmp/burst-steal-out
-
-    steal-worker-2:
-        profiles: ["steal-test"]
-        image: burst-runtime:dev
-        hostname: steal-worker-2
-        command:
-            [
-                "/bin/sh",
-                "-c",
-                "sleep 5 && /usr/local/bin/burst-worker --config /app/burst-config/burst-steal-test.config.json --worker-id worker-2",
-            ]
-        depends_on:
-            - controller-steal
-        volumes:
-            - steal-output:/tmp/burst-steal-out
-
-    steal-worker-3:
-        profiles: ["steal-test"]
-        image: burst-runtime:dev
-        hostname: steal-worker-3
-        command:
-            [
-                "/bin/sh",
-                "-c",
-                "sleep 5 && /usr/local/bin/burst-worker --config /app/burst-config/burst-steal-test.config.json --worker-id worker-3",
-            ]
-        depends_on:
-            - controller-steal
-        volumes:
-            - steal-output:/tmp/burst-steal-out
-
-    steal-test:
-        profiles: ["steal-test"]
-        image: burst-runtime:dev
-        depends_on:
-            - controller-steal
-            - steal-worker-1
-            - steal-worker-2
-            - steal-worker-3
-        entrypoint: ["python3", "/app/scripts/test_work_stealing.py"]
-        command:
-            - "--config"
-            - "/app/burst-config/burst-steal-test.config.json"
-            - "--cli-bin"
-            - "/usr/local/bin/burst-cli"
-            - "--output-dir"
-            - "/tmp/burst-steal-out"
-            - "--expected-busy-worker"
-            - "steal-worker-1"
-        volumes:
-            - steal-output:/tmp/burst-steal-out
+            - client
 
 volumes:
     steal-output:

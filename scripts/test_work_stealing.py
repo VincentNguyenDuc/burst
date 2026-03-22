@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--long-sleep-sec", type=float, default=8.0)
     parser.add_argument("--short-sleep-sec", type=float, default=0.2)
     parser.add_argument("--short-jobs", type=int, default=3)
+    parser.add_argument("--expected-min-stolen", type=int, default=1)
     parser.add_argument("--expected-busy-worker", default="steal-worker-1")
     return parser.parse_args()
 
@@ -183,10 +184,12 @@ async def main() -> int:
         if hostnames[job_id] != args.expected_busy_worker
     ]
 
-    if not stolen_short_jobs:
+    expected_min_stolen = max(args.expected_min_stolen, 1)
+    if len(stolen_short_jobs) < expected_min_stolen:
         raise RuntimeError(
-            "expected at least one short job to run on a different worker "
-            f"than {args.expected_busy_worker}, got hostnames={short_job_hostnames}"
+            "expected at least "
+            f"{expected_min_stolen} short jobs to run on a different worker than "
+            f"{args.expected_busy_worker}, got hostnames={short_job_hostnames}"
         )
 
     print("work_stealing_test=passed")
@@ -194,6 +197,7 @@ async def main() -> int:
     print(f"long_job_worker={long_job_hostname}")
     print(f"short_jobs_total={len(short_jobs)}")
     print(f"short_jobs_stolen={len(stolen_short_jobs)}")
+    print(f"short_jobs_stolen_min_expected={expected_min_stolen}")
     print("short_job_workers=" + ",".join(short_job_hostnames))
     return 0
 
